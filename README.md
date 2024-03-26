@@ -61,8 +61,21 @@ Use ctrl+D to send the command in several parts: ’com’, then ’man’, then
  - Handle file transfer.
  - Abot.
 
-## Documentation
+## Links
+Documentation
+
 https://datatracker.ietf.org/doc/html/rfc1459
+
+https://modern.ircdocs.horse/
+
+Example
+
+https://chi.cs.uchicago.edu/chirc/irc_examples.html
+
+Guide
+
+https://ircgod.com/posts/
+
 
 ## Checks
 **Basic checks**
