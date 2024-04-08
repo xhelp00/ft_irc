@@ -11,40 +11,40 @@
 
 int main()
 {
-    // creating server listen socket
-    int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+	// creating server listen socket
+	int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
 	if (serverSocket < 0) {
 		std::cerr << "Setting up socket failed. SAD" << std::endl;
 		return 1;
 	}
 
-    // specifying the address
-    sockaddr_in serverAddress;
-    serverAddress.sin_family = AF_INET;
-    serverAddress.sin_port = htons(8080);
-    serverAddress.sin_addr.s_addr = INADDR_ANY;
+	// specifying the address
+	sockaddr_in serverAddress;
+	serverAddress.sin_family = AF_INET;
+	serverAddress.sin_port = htons(8080);
+	serverAddress.sin_addr.s_addr = INADDR_ANY;
 
-    // binding socket.
-    bind(serverSocket, (sockaddr*)&serverAddress,
-         sizeof(serverAddress));
+	// binding socket.
+	bind(serverSocket, (sockaddr*)&serverAddress,
+		 sizeof(serverAddress));
 
-    // listening to the assigned socket
-    listen(serverSocket, SOMAXCONN);
+	// listening to the assigned socket
+	listen(serverSocket, SOMAXCONN);
 
-    // accepting connection request
+	// accepting connection request
 	sockaddr_in client;
 	socklen_t clinentSize = sizeof(client);
-    int clientSocket = accept(serverSocket, (sockaddr*)&client, &clinentSize);
+	int clientSocket = accept(serverSocket, (sockaddr*)&client, &clinentSize);
 
 	// get host info
 	std::string host = inet_ntoa(client.sin_addr);
 	std::cout << host << " connected on port " << ntohs(client.sin_port) << std::endl;
 
-    // closing the server listen socket.
-    close(serverSocket);
+	// closing the server listen socket.
+	close(serverSocket);
 
-    // recieving data
-    char buffer[1024];
+	// recieving data
+	char buffer[1024];
 	int welcome = 0;
 	std::string nick, user, serverName(":IRCQ+.org");
 	while (true) {
@@ -61,7 +61,7 @@ int main()
 			break;
 		}
 
-		// std::cout << buffer;
+		std::cout << "BuFFer: " << buffer;
 
 		if (!welcome){
 			welcome = 1;
@@ -90,13 +90,25 @@ int main()
 					std::cout << "Client disconnected" << std::endl;
 					return 0;
 				}
+				if (word == "PING"){
+					std::string pongMessage("PONG " + serverName + "\n");
+					send(clientSocket, pongMessage.c_str(), pongMessage.length(), 0);
+				}
+				if (word == "PART"){
+					send(clientSocket, buffer, bytesReceived, 0);
+
+				}
+				if (word == "JOIN"){
+					send(clientSocket, buffer, bytesReceived, 0);
+
+				}
 			}
-			send(clientSocket, buffer, bytesReceived, 0);
+			// send(clientSocket, buffer, bytesReceived, 0);
 		}
 	}
 
 	// closing the client socket
 	close(clientSocket);
 
-    return 0;
+	return 0;
 }
