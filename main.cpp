@@ -45,7 +45,7 @@ public:
 	creates a new user class and
 	adds the client socket to epoll
 */
-void accept_new_connection_request(int server_fd, int epoll_fd) {
+void accept_new_connection_request(std::vector<User*>& users, int server_fd, int epoll_fd) {
 	sockaddr_in new_addr;
 	socklen_t addrlen = sizeof(new_addr);
 
@@ -71,6 +71,7 @@ void accept_new_connection_request(int server_fd, int epoll_fd) {
 
 	// Create new user class and store info inside
 	User *user = new User("", "", host);
+	users.push_back(user);
 	user->_fd = conn_sock;
 
 	struct epoll_event ev;
@@ -92,7 +93,7 @@ void accept_new_connection_request(int server_fd, int epoll_fd) {
 	Saves message from client into buffer
 	and parses it into words to create a response
 */
-int recv_message(User* user, std::vector<Channel*>& channels) {
+int recv_message(std::vector<User*>& users, User* user, std::vector<Channel*>& channels) {
 	char buffer[1024];
 	std::string serverPrefix(":IRCQ+.org"), userPrefix(":" + user->_nick + "!" + user->_user + "@" + user->_host);
 	memset(buffer, 0, sizeof(buffer));
@@ -109,19 +110,23 @@ int recv_message(User* user, std::vector<Channel*>& channels) {
 	// Parses the message into words and creates a response
 	while (info >> word){
 		std::cout << "Word: " << word << std::endl;
+		//Works fine
 		if (word == "QUIT"){
 			std::cout << "Client disconnected" << std::endl;
 			return 0;
 		}
+		//Need to clean memory after
 		if (word == "die"){
 			std::cout << "DIE COMMAND" << std::endl;
 			close(serverSocket);
 			exit(0);
 		}
+		//Just a reply to client Ping command
 		if (word == "PING"){
 			std::string pongMessage("PONG " + serverPrefix + "\n");
 			send(user->_fd, pongMessage.c_str(), pongMessage.length(), 0);
 		}
+		//Works only for leaving a current channel, needs more work
 		if (word == "PART"){
 			std::string Message(userPrefix + " PART :" + user->_nowAt->_name + "\n");
 			for(std::vector<User*>::iterator it = user->_nowAt->_users.begin(); it != user->_nowAt->_users.end(); ++it)
@@ -130,6 +135,7 @@ int recv_message(User* user, std::vector<Channel*>& channels) {
 			user->_nowAt->_users.erase(std::remove(user->_nowAt->_users.begin(), user->_nowAt->_users.end(), user), user->_nowAt->_users.end());
 			user->_nowAt = NULL;
 		}
+		//Works but permissons again
 		if (word == "JOIN"){
 			std::string nameToJoin;
 			info >> nameToJoin;
@@ -169,20 +175,37 @@ int recv_message(User* user, std::vector<Channel*>& channels) {
 				send(user->_fd, Message.c_str(), Message.length(), 0);
 			}
 		}
+		//Doesn't work when sending to other places
 		if (word == "PRIVMSG") {
-			std::string channel, message;
-			info >> channel;
-			std::getline(info, message);
-			std::string Message(userPrefix + " PRIVMSG " + channel + " :" + message + "\n");
+			std::string msgtarget, textToSend;
+			info >> msgtarget;
+			std::getline(info, textToSend);
 
-			for(std::vector<User*>::iterator it = user->_nowAt->_users.begin(); it != user->_nowAt->_users.end(); ++it)
-				if ((*it)->_fd != user->_fd)
+			textToSend.erase(0, textToSend.find_first_not_of(" 	:"));
+			std::cout << msgtarget << " : " << textToSend << "\n";
+			std::string Message(userPrefix + " PRIVMSG " + msgtarget + " :" + textToSend + "\n");
+
+			std::vector<Channel*>::iterator foundServer;
+			for (foundServer = channels.begin(); foundServer != channels.end(); ++foundServer)
+				if (msgtarget == (*foundServer)->_name)
+					break;
+			if (foundServer != channels.end()) {
+				for(std::vector<User*>::iterator it = (*foundServer)->_users.begin(); it != (*foundServer)->_users.end(); ++it)
 					send((*it)->_fd, Message.c_str(), Message.length(), 0);
+			}
+			else {
+				std::vector<User*>::iterator foundUser;
+				for (foundUser = users.begin(); foundUser != users.end(); ++foundUser)
+					if (msgtarget == (*foundUser)->_nick)
+						break;
+				if (foundUser != users.end())
+					send((*foundUser)->_fd, Message.c_str(), Message.length(), 0);
+			}
 		}
+		//Need to do check if username is valid
 		if (word == "NICK"){
 			info >> word;
 			user->_nick = word;
-			//Need to do check if username is valid
 			if (user->_welcome) {
 				std::string Message(userPrefix + " NICK :" + user->_nick + "\n");
 				if (user->_nowAt != NULL) {
@@ -197,57 +220,52 @@ int recv_message(User* user, std::vector<Channel*>& channels) {
 			info >> word;
 			user->_user = word;
 		}
+		//Works but need to add check for permission
+		//and not sure about setting the topic when not on that channel
+		if (word == "TOPIC"){
+			std::string channelTo, topic;
+			info >> channelTo;
+			std::getline(info, topic);
+
+			topic.erase(0, topic.find_first_not_of(" 	:"));
+			std::cout << channelTo << " : " << topic << "\n";
+			std::vector<Channel*>::iterator found;
+			for (found = channels.begin(); found != channels.end(); ++found)
+				if (channelTo == (*found)->_name)
+					break;
+
+			if (found != channels.end()) {
+				if (topic == "") {
+					//Remove topic
+					(*found)->_topic = "";
+					std::string Message(userPrefix + " TOPIC " + (*found)->_name + " :" + "\n");
+					for(std::vector<User*>::iterator it = (*found)->_users.begin(); it != (*found)->_users.end(); ++it)
+						send((*it)->_fd, Message.c_str(), Message.length(), 0);
+				}
+				else if (topic.length() > 0) {
+					//Change topic
+					(*found)->_topic = topic;
+					std::string Message(userPrefix + " TOPIC " + (*found)->_name + " :" + topic + "\n");
+					for(std::vector<User*>::iterator it = (*found)->_users.begin(); it != (*found)->_users.end(); ++it)
+						send((*it)->_fd, Message.c_str(), Message.length(), 0);
+				}
+				else if ((*found)->_topic.length() > 0){
+					std::string Message(serverPrefix + " 331 " + user->_nick + " " + (*found)->_name + " :No topic is set." + "\n");
+					send(user->_fd, Message.c_str(), Message.length(), 0);
+				}
+				else {
+					std::string Message(serverPrefix + " 332 " + user->_nick + " " + (*found)->_name + " :" + (*found)->_topic + "\n");
+					send(user->_fd, Message.c_str(), Message.length(), 0);
+				}
+			}
+		}
+		//Displaying a welcome message to a new connected client
 		if (!user->_welcome && user->_user.length() > 0 && user->_nick.length() > 0){
 			user->_welcome = 1;
 			std::string Message(serverPrefix + " 001 " + user->_nick + " :Welcome to IRCQ+ " + user->_nick + "!" + user->_user + "@" + user->_host + "\n");
 			send(user->_fd, Message.c_str(), Message.length(), 0);
 		}
 	}
-	//
-	// if (!user->welcome){
-	// 	user->welcome = 1;
-	// 	std::stringstream info(buffer);
-	// 	std::string word;
-	// 	while (info >> word){
-	// 		std::cout << "Word: " << word << std::endl;
-	// 		if (word == "NICK"){
-	// 			info >> word;
-	// 			user->nick = word;
-	// 		}
-	// 		if (word == "USER"){
-	// 			info >> word;
-	// 			user->user = word;
-	// 		}
-	// 	}
-	// 	std::string welcomeMessage(serverName + " 001 " + user->nick + " :Welcome to IRCQ+ " + user->nick + "! " + user->user + "@" + user->host + "\n");
-	// 	send(user->fd, welcomeMessage.c_str(), welcomeMessage.length(), 0);
-	// }
-	// else {
-	// 	std::stringstream info(buffer);
-	// 	std::string word;
-	// 	while (info >> word){
-	// 		std::cout << "Word: " << word << std::endl;
-	// 		if (word == "QUIT"){
-	// 			std::cout << "Client disconnected" << std::endl;
-	// 			return 0;
-	// 		}
-	// 		if (word == "die"){
-	// 			std::cout << "DIE COMMAND" << std::endl;
-	// 			exit(0);
-	// 		}
-	// 		if (word == "PING"){
-	// 			std::string pongMessage("PONG " + serverName + "\n");
-	// 			send(user->fd, pongMessage.c_str(), pongMessage.length(), 0);
-	// 		}
-	// 		if (word == "PART"){
-	// 			send(user->fd, buffer, bytesReceived, 0);
-
-	// 		}
-	// 		if (word == "JOIN"){
-	// 			send(user->fd, buffer, bytesReceived, 0);
-	// 		}
-	// 	}
-	// }
 	return 0;
 }
 
@@ -256,6 +274,8 @@ int main() {
 	std::vector<Channel*> channels;
 	Channel *general = new Channel("#general", "Channel for general discussion", 5);
 	channels.push_back(general);
+
+	std::vector<User*> users;
 
 	// creating server listen socket
 	serverSocket = socket(AF_INET, SOCK_STREAM, 0);
@@ -315,9 +335,9 @@ int main() {
 			User *user = reinterpret_cast<User*>(events[i].data.ptr);
 			// std::cout << "FD: " << events[i].data.fd << "ServerSocket:" << serverSocket << std::endl;
 			if (user->_fd == serverSocket)
-				accept_new_connection_request(serverSocket, epoll_fd);
+				accept_new_connection_request(users, serverSocket, epoll_fd);
 			else
-				recv_message(user, channels);
+				recv_message(users, user, channels);
 		}
 	}
 
