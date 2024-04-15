@@ -16,25 +16,24 @@
 #include <algorithm>
 
 int serverSocket;
-
 class Channel;
 // class for user info storrage
 class User
 {
 public:
 	std::string _nick, _user, _host;
-	Channel* _nowAt;
-	int _welcome, _fd;
-	User(std::string nick, std::string user, std::string host) : _nick(nick), _user(user), _host(host), _nowAt(NULL), _welcome(0), _fd(0){}
+	std::vector<Channel*> _joinedChannels;
+	int _welcome, _fd, _nJoinedChannels;
+	User(std::string nick, std::string user, std::string host) : _nick(nick), _user(user), _host(host), _welcome(0), _fd(0), _nJoinedChannels(0){}
 	~User(){}
 };
 
 class Channel {
 public:
-	std::string _name, _topic;
+	std::string _name, _topic, _key;
 	std::vector<User*> _users;
 	uint32_t _nUsers, _maxUsers;
-	Channel(std::string name, std::string topic, int maxUsers) : _name(name), _topic(topic), _nUsers(0), _maxUsers(maxUsers){}
+	Channel(std::string name, std::string topic, std::string key, int maxUsers) : _name(name), _topic(topic), _key(key), _nUsers(0), _maxUsers(maxUsers){}
 	~Channel(){}
 };
 
@@ -54,12 +53,8 @@ void accept_new_connection_request(std::vector<User*>& users, int server_fd, int
 						(socklen_t*)&addrlen);
 
 	if (conn_sock == -1) {
-		if ((errno == EAGAIN) || (errno == EWOULDBLOCK))
-			return;
-		else {
 			std::cerr << "accept" << std::endl;
 			return;
-		}
 	}
 
 	// Make the new connection non blocking
@@ -128,92 +123,250 @@ int recv_message(std::vector<User*>& users, User* user, std::vector<Channel*>& c
 		}
 		//Works only for leaving a current channel, needs more work
 		if (word == "PART"){
-			std::string Message(userPrefix + " PART :" + user->_nowAt->_name + "\n");
-			for(std::vector<User*>::iterator it = user->_nowAt->_users.begin(); it != user->_nowAt->_users.end(); ++it)
-				send((*it)->_fd, Message.c_str(), Message.length(), 0);
-			user->_nowAt->_nUsers--;
-			user->_nowAt->_users.erase(std::remove(user->_nowAt->_users.begin(), user->_nowAt->_users.end(), user), user->_nowAt->_users.end());
-			user->_nowAt = NULL;
-		}
-		//Works but permissons again
-		if (word == "JOIN"){
-			std::string nameToJoin;
-			info >> nameToJoin;
+			std::string line, namesToLeave, name, partMessage;
+			std::getline(info, line);
 
-			std::vector<Channel*>::iterator found;
-			for (found = channels.begin(); found != channels.end(); ++found)
-				if (nameToJoin == (*found)->_name)
-					break;
-
-			if (found == channels.end()) {
-				//ERR_NOSUCHCHANNEL
-				std::string Message(serverPrefix + " 403 " + user->_nick + " " + nameToJoin + " :No such channel" + "\n");
+			if (line.length() <= 0) {
+				//ERR_NEEDMOREPARAMS
+				std::string Message(serverPrefix + " 461 " + user->_nick + " PART :Not enough parameters" + "\n");
 				send(user->_fd, Message.c_str(), Message.length(), 0);
 			}
-			else if ((*found)->_nUsers >= (*found)->_maxUsers) {
-				//ERR_CHANNELISFULL
-				std::string Message(serverPrefix + " 471 " + user->_nick + " " + (*found)->_name + " :Cannot join channel (+l)" + "\n");
+
+			std::stringstream arguments(line);
+
+			arguments >> namesToLeave;
+			std::getline(arguments, partMessage);
+			partMessage.erase(0, partMessage.find_first_not_of(" 	"));
+
+			std::stringstream names(namesToLeave);
+
+			while (std::getline(names, name, ',')) {
+				std::cout << "User {fd: " << user->_fd << " nick: " << user->_nick << "} is trying to leave channel " + name + " with message " + partMessage << std::endl;
+				std::vector<Channel*>::iterator found;
+				for (found = channels.begin(); found != channels.end(); ++found)
+					if (name == (*found)->_name)
+						break;
+
+				if (found == channels.end()) {
+					//ERR_NOSUCHCHANNEL
+					std::string Message(serverPrefix + " 403 " + user->_nick + " " + name + " :No such channel" + "\n");
+					send(user->_fd, Message.c_str(), Message.length(), 0);
+				}
+				else {
+					std::vector<User*>::iterator us;
+					for (us = (*found)->_users.begin(); us != (*found)->_users.end(); ++us)
+						if ((*us)->_fd == user->_fd)
+							break;
+					if (us == (*found)->_users.end()) {
+						//ERR_NOTONCHANNEL
+						std::string Message(serverPrefix + " 442 " + user->_nick + " " + name + " :You're not on that channel" + "\n");
+						send(user->_fd, Message.c_str(), Message.length(), 0);
+					}
+					else {
+						std::string Message(userPrefix + " PART " + (*found)->_name);
+						if (partMessage.length() > 0)
+							Message.append(" " + partMessage + "\n");
+						else
+							Message.append("\n");
+						std::cout << "User {fd: " << user->_fd << " nick: " << user->_nick << "} is leaving with command " + Message << std::endl;
+						for(std::vector<User*>::iterator it = (*found)->_users.begin(); it != (*found)->_users.end(); ++it)
+							send((*it)->_fd, Message.c_str(), Message.length(), 0);
+						(*found)->_nUsers--;
+						user->_joinedChannels.erase(std::remove(user->_joinedChannels.begin(), user->_joinedChannels.end(), (*found)), user->_joinedChannels.end());
+						(*found)->_users.erase(std::remove((*found)->_users.begin(), (*found)->_users.end(), user), (*found)->_users.end());
+					}
+				}
+			}
+		}
+
+		//Works need to add option 0
+		/*
+			JOIN #toast,#ircv3 mysecret
+
+			line = JOIN #toast,#ircv3 mysecret
+
+			namesToJoin = #toast,#ircv3
+			keysToJoin = mysecret
+		*/
+		if (word == "JOIN"){
+			std::string line, namesToJoin, name, keysToJoin, key;
+			std::getline(info, line);
+
+			line.erase(0, line.find_first_not_of(" 	"));
+
+			if (line.length() <= 0) {
+				//ERR_NEEDMOREPARAMS
+				std::string Message(serverPrefix + " 461 " + user->_nick + " JOIN :Not enough parameters" + "\n");
 				send(user->_fd, Message.c_str(), Message.length(), 0);
+			}
+			else if (line == "#0") {
+				//Leave all joined channels
+				std::cout << line << std::endl;
+				for (std::vector<Channel*>::iterator ser = user->_joinedChannels.begin(); ser != user->_joinedChannels.end(); ++ser) {
+					std::string Message(userPrefix + " PART  " + (*ser)->_name + "\n");
+					for(std::vector<User*>::iterator us = (*ser)->_users.begin(); us != (*ser)->_users.end(); ++us)
+						send((*us)->_fd, Message.c_str(), Message.length(), 0);
+				}
 			}
 			else {
-				(*found)->_nUsers++;
-				(*found)->_users.push_back(user);
-				user->_nowAt = (*found);
-				std::string Message(userPrefix + " JOIN :" + (*found)->_name + "\n");
-				for(std::vector<User*>::iterator it = user->_nowAt->_users.begin(); it != user->_nowAt->_users.end(); ++it)
-					if ((*it)->_fd != user->_fd)
-						send((*it)->_fd, Message.c_str(), Message.length(), 0);
-				//RPL_TOPIC
-				Message.append(serverPrefix + " 332 " + user->_nick + " " + (*found)->_name + " :" + (*found)->_topic + "\n");
-				//RPL_NAMREPLY
-				Message.append(serverPrefix + " 353 " + user->_nick + " = " + (*found)->_name + " :");
-				for (std::vector<User*>::iterator it = (*found)->_users.begin(); it != (*found)->_users.end(); ++it)
-					Message.append((*it)->_nick + " ");
-				Message.append("\n");
-				//RPL_ENDOFNAMES
-				Message.append(serverPrefix + " 366 " + user->_nick + " " + (*found)->_name + " :End of Names list" + "\n");
-				send(user->_fd, Message.c_str(), Message.length(), 0);
+
+				std::stringstream arguments(line);
+
+				arguments >> namesToJoin;
+				arguments >> keysToJoin;
+
+				std::stringstream names(namesToJoin), keys(keysToJoin);
+
+				while (std::getline(names, name, ',')) {
+					std::getline(keys, key, ',');
+					std::cout << "User {fd: " << user->_fd << " nick: " << user->_nick << "} is trying to join channel " + name + " with key " + key << std::endl;
+					std::vector<Channel*>::iterator found;
+					for (found = channels.begin(); found != channels.end(); ++found)
+						if (name == (*found)->_name)
+							break;
+
+					if (found == channels.end()) {
+						//ERR_NOSUCHCHANNEL
+						std::string Message(serverPrefix + " 403 " + user->_nick + " " + name + " :No such channel" + "\n");
+						send(user->_fd, Message.c_str(), Message.length(), 0);
+					}
+					else if ((*found)->_nUsers >= (*found)->_maxUsers) {
+						//ERR_CHANNELISFULL
+						std::string Message(serverPrefix + " 471 " + user->_nick + " " + (*found)->_name + " :Cannot join channel (+l)" + "\n");
+						send(user->_fd, Message.c_str(), Message.length(), 0);
+					}
+					else if ((*found)->_key != key) {
+						//ERR_BADCHANNELKEY
+						std::string Message(serverPrefix + " 475 " + user->_nick + " " + (*found)->_name + " :Cannot join channel (+k) - bad key" + "\n");
+						send(user->_fd, Message.c_str(), Message.length(), 0);
+					}
+					else {
+						(*found)->_nUsers++;
+						(*found)->_users.push_back(user);
+						user->_joinedChannels.push_back(*found);
+
+						{
+						//JOIN MESSAGE to all users of that channel
+						std::string Message(userPrefix + " JOIN :" + (*found)->_name + "\n");
+						for(std::vector<User*>::iterator us = (*found)->_users.begin(); us != (*found)->_users.end(); ++us)
+							send((*us)->_fd, Message.c_str(), Message.length(), 0);
+						}
+
+						//RPL_TOPIC
+						std::string Message(serverPrefix + " 332 " + user->_nick + " " + (*found)->_name + " :" + (*found)->_topic + "\n");
+						//RPL_NAMREPLY
+						Message.append(serverPrefix + " 353 " + user->_nick + " = " + (*found)->_name + " :");
+						for (std::vector<User*>::iterator it = (*found)->_users.begin(); it != (*found)->_users.end(); ++it)
+							Message.append((*it)->_nick + " ");
+						Message.append("\n");
+						//RPL_ENDOFNAMES
+						Message.append(serverPrefix + " 366 " + user->_nick + " " + (*found)->_name + " :End of Names list" + "\n");
+						send(user->_fd, Message.c_str(), Message.length(), 0);
+					}
+				}
 			}
 		}
-		//Doesn't work when sending to other places
+		//Works fine i guess
 		if (word == "PRIVMSG") {
 			std::string msgtarget, textToSend;
 			info >> msgtarget;
+
 			std::getline(info, textToSend);
 
 			textToSend.erase(0, textToSend.find_first_not_of(" 	:"));
 			std::cout << msgtarget << " : " << textToSend << "\n";
-			std::string Message(userPrefix + " PRIVMSG " + msgtarget + " :" + textToSend + "\n");
 
-			std::vector<Channel*>::iterator foundServer;
-			for (foundServer = channels.begin(); foundServer != channels.end(); ++foundServer)
-				if (msgtarget == (*foundServer)->_name)
-					break;
-			if (foundServer != channels.end()) {
-				for(std::vector<User*>::iterator it = (*foundServer)->_users.begin(); it != (*foundServer)->_users.end(); ++it)
-					send((*it)->_fd, Message.c_str(), Message.length(), 0);
+			if (msgtarget.length() <= 0) {
+				//ERR_NORECIPIENT
+				std::string Message(serverPrefix + " 411 " + user->_nick + " :No recipient given (PRIVMSG)" + "\n");
+				send(user->_fd, Message.c_str(), Message.length(), 0);
+			}
+			else if (textToSend.length() <= 0) {
+				//ERR_NOTEXTTOSEND
+				std::string Message(serverPrefix + " 412 " + user->_nick + " :No text to send" + "\n");
+				send(user->_fd, Message.c_str(), Message.length(), 0);
+			}
+
+			if ((*msgtarget.begin()) == '#') {
+				std::vector<Channel*>::iterator foundServer;
+				for (foundServer = channels.begin(); foundServer != channels.end(); ++foundServer)
+					if (msgtarget == (*foundServer)->_name)
+						break;
+				if (foundServer == channels.end()) {
+					//ERR_CANNOTSENDTOCHAN
+					std::string Message(serverPrefix + " 401 " + user->_nick + " " + msgtarget + " :No such nick/channel" + "\n");
+					send(user->_fd, Message.c_str(), Message.length(), 0);
+				}
+				else {
+					std::string Message(userPrefix + " PRIVMSG " + msgtarget + " :" + textToSend + "\n");
+					for(std::vector<User*>::iterator it = (*foundServer)->_users.begin(); it != (*foundServer)->_users.end(); ++it)
+						if ((*it)->_nick != user->_nick)
+							send((*it)->_fd, Message.c_str(), Message.length(), 0);
+				}
 			}
 			else {
 				std::vector<User*>::iterator foundUser;
 				for (foundUser = users.begin(); foundUser != users.end(); ++foundUser)
 					if (msgtarget == (*foundUser)->_nick)
 						break;
-				if (foundUser != users.end())
+				if (foundUser == users.end()) {
+					//ERR_NOSUCHNICK
+					std::string Message(serverPrefix + " 401 " + user->_nick + " " + msgtarget + " :No such nick/channel" + "\n");
+					send(user->_fd, Message.c_str(), Message.length(), 0);
+				}
+				else {
+					std::string Message(userPrefix + " PRIVMSG " + msgtarget + " :" + textToSend + "\n");
 					send((*foundUser)->_fd, Message.c_str(), Message.length(), 0);
+				}
 			}
 		}
-		//Need to do check if username is valid
+		//Works fine
 		if (word == "NICK"){
-			info >> word;
-			user->_nick = word;
-			if (user->_welcome) {
-				std::string Message(userPrefix + " NICK :" + user->_nick + "\n");
-				if (user->_nowAt != NULL) {
-					for(std::vector<User*>::iterator it = user->_nowAt->_users.begin(); it != user->_nowAt->_users.end(); ++it)
-						send((*it)->_fd, Message.c_str(), Message.length(), 0);
+			int correctNick = 1;
+			std::string	nick;
+			info >> nick;
+			//Truncating the nick
+			if (nick.length() > 30)
+				nick = nick.substr(0, 30);
+			//No nick given
+			else if (nick.length() <= 0) {
+				std::string errorMessage(serverPrefix + " 431 " + user->_nick + " :No nickname given" + "\n");
+				send(user->_fd, errorMessage.c_str(), errorMessage.length(), 0);
+				correctNick = 0;
+			}
+
+			//Invalid nickname
+			else if (nick.find_first_not_of("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ[]{}\\|^`–-_") != nick.npos || isdigit(nick[0])) {
+				std::string errorMessage(serverPrefix + " 432 " + user->_nick + " " + nick + " :Erroneous nickname" + "\n");
+				send(user->_fd, errorMessage.c_str(), errorMessage.length(), 0);
+				correctNick = 0;
+			}
+
+			//Cheking if nick is in use
+			std::vector<User*>::iterator foundUser;
+			for (foundUser = users.begin(); foundUser != users.end(); ++foundUser)
+				if (nick == (*foundUser)->_nick)
+					break;
+			if (foundUser != users.end()) {
+				std::string errorMessage(serverPrefix + " 433 " + "* " + nick + " :Nickname is already in use." + "\n");
+				send(user->_fd, errorMessage.c_str(), errorMessage.length(), 0);
+				correctNick = 0;
+			}
+
+			//Setting the nickname to user if it's correct
+			if (correctNick) {
+				user->_nick = nick;
+				if (user->_welcome) {
+					std::string Message(userPrefix + " NICK :" + user->_nick + "\n");
+					if (user->_nJoinedChannels > 0) {
+						for(std::vector<Channel*>::iterator ser = user->_joinedChannels.begin(); ser != user->_joinedChannels.end(); ++ser)
+							for(std::vector<User*>::iterator us = (*ser)->_users.begin(); us != (*ser)->_users.end(); ++us)
+								if ((*us)->_fd != user->_fd)
+									send((*us)->_fd, Message.c_str(), Message.length(), 0);
+					}
+					else
+						send(user->_fd, Message.c_str(), Message.length(), 0);
 				}
-				else
-					send(user->_fd, Message.c_str(), Message.length(), 0);
 			}
 		}
 		if (word == "USER"){
@@ -269,10 +422,10 @@ int recv_message(std::vector<User*>& users, User* user, std::vector<Channel*>& c
 	return 0;
 }
 
-int main() {
-
+int main(int argc, char** argv) {
+	(void) argc;
 	std::vector<Channel*> channels;
-	Channel *general = new Channel("#general", "Channel for general discussion", 5);
+	Channel *general = new Channel("#general", "Channel for general discussion", "", 5);
 	channels.push_back(general);
 
 	std::vector<User*> users;
@@ -287,7 +440,7 @@ int main() {
 	// specifying the address
 	sockaddr_in serverAddress;
 	serverAddress.sin_family = AF_INET;
-	serverAddress.sin_port = htons(8080);
+	serverAddress.sin_port = htons(atoi(argv[1]));
 	serverAddress.sin_addr.s_addr = INADDR_ANY;
 
 	// binding socket.
