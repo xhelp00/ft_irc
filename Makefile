@@ -1,7 +1,7 @@
 NAME =	ircserv
 CPPFLAGS = -Wall -Wextra -Werror -g -std=c++98
 
-SRC = main.cpp
+SRC = main.cpp User.cpp Channel.cpp Server.cpp
 
 all: $(NAME)
 
