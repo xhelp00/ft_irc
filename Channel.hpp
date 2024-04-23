@@ -28,13 +28,15 @@ public:
 	~Channel();
 
 	//Getters
-	std::string getName();
-	std::string getTopic();
-	std::string getKey();
-	uint32_t getNUsers();
-	uint32_t getMaxUsers();
+	std::string getName() const;
+	std::string getTopic() const;
+	std::string getKey() const;
+	uint32_t getNUsers() const;
+	uint32_t getMaxUsers() const;
 	std::vector<User*>::iterator getUsersBegin();
 	std::vector<User*>::iterator getUsersEnd();
+	std::vector<User*>::const_iterator getUsersBegin() const;
+	std::vector<User*>::const_iterator getUsersEnd() const;
 
 	//Setters
 	void setName(std::string name);
@@ -50,5 +52,7 @@ public:
 	bool operator == (const Channel& channel) const;
 	bool operator != (const Channel& channel) const;
 };
+
+std::ostream&	operator << (std::ostream& out, const Channel& channel);
 
 #endif // CHANNEL_HPP

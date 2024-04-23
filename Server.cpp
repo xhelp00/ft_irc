@@ -96,14 +96,16 @@ void Server::reply(User* user, std::string prefix, std::string command , std::st
 		reply.append(_serverPrefix + " ");
 	reply.append(command + " ");
 	if (target.length() > 0)
-		reply.append(target + " ");
+		reply.append(target);
 	else
-		reply.append(user->getNick() + " ");
+		reply.append(user->getNick());
 	if (text.length() > 0)
-		reply.append(text);
+		reply.append(" " + text);
 	if (reply.find("\n") == std::string::npos)
 		reply.append("\n");
-	send(user->getFd(), reply.c_str(), reply.length(), 0);
+	int bytesSend = send(user->getFd(), reply.c_str(), reply.length(), 0);
+	if (bytesSend < 0)
+		std::cout << RED << "Error in sending message to FD: " << user->getFd() << "	" << reply << std::endl;
 	std::cout << BLUE << "FD:" << user->getFd() << "	" << reply << END;
 }
 
@@ -176,30 +178,24 @@ int Server::recvMessage(User* user) {
 					if (name == (*found)->getName())
 						break;
 
-				if (found == _channels.end()) {
-					//ERR_NOSUCHCHANNEL
-					std::string Message(_serverPrefix + " 403 " + user->getNick() + " " + name + " :No such channel" + "\n");
-					send(user->getFd(), Message.c_str(), Message.length(), 0);
-				}
+				//ERR_NOSUCHCHANNEL
+				if (found == _channels.end())
+					reply(user, "", "403", "", name + " :No such channel");
 				else {
 					std::vector<User*>::iterator us;
 					for (us = (*found)->getUsersBegin(); us != (*found)->getUsersEnd(); ++us)
 						if ((*us)->getFd() == user->getFd())
 							break;
-					if (us == (*found)->getUsersEnd()) {
-						//ERR_NOTONCHANNEL
-						std::string Message(_serverPrefix + " 442 " + user->getNick() + " " + name + " :You're not on that channel" + "\n");
-						send(user->getFd(), Message.c_str(), Message.length(), 0);
-					}
+					//ERR_NOTONCHANNEL
+					if (us == (*found)->getUsersEnd())
+						reply(user, "", "442", "", name + " :You're not on that channel");
 					else {
-						std::string Message(user->getUserPrefix() + " PART " + (*found)->getName());
-						if (partMessage.length() > 0)
-							Message.append(" " + partMessage + "\n");
-						else
-							Message.append("\n");
-						std::cout << "User {fd: " << user->getFd() << " nick: " << user->getNick() << "} is leaving with command " + Message << std::endl;
-						for(std::vector<User*>::iterator it = (*found)->getUsersBegin(); it != (*found)->getUsersEnd(); ++it)
-							send((*it)->getFd(), Message.c_str(), Message.length(), 0);
+						for(std::vector<User*>::iterator it = (*found)->getUsersBegin(); it != (*found)->getUsersEnd(); ++it) {
+							if (partMessage.length() > 0)
+								reply((*it), (*it)->getUserPrefix(), "PART", (*found)->getName(), "");
+							else
+								reply((*it), (*it)->getUserPrefix(), "PART", (*found)->getName(), partMessage);
+						}
 						user->partChannel(*found);
 						(*found)->removeUser(user);
 					}
@@ -222,11 +218,9 @@ int Server::recvMessage(User* user) {
 
 			line.erase(0, line.find_first_not_of(" 	"));
 
-			if (line.length() <= 0) {
-				//ERR_NEEDMOREPARAMS
-				std::string Message(_serverPrefix + " 461 " + user->getNick() + " JOIN :Not enough parameters" + "\n");
-				send(user->getFd(), Message.c_str(), Message.length(), 0);
-			}
+			//ERR_NEEDMOREPARAMS
+			if (line.length() <= 0)
+				reply(user, "", "461", "", "JOIN :Not enough parameters");
 			else {
 
 				std::stringstream arguments(line);
@@ -244,58 +238,53 @@ int Server::recvMessage(User* user) {
 						if (name == (*cha)->getName())
 							break;
 
+					//Leave all joined channels
 					if (name == "#0" || name == "0") {
-						//Leave all joined channels
 						for (std::vector<Channel*>::iterator ser = user->getJoinedChannelsBegin(); ser != user->getJoinedChannelsEnd(); ++ser) {
-							std::string Message(user->getUserPrefix() + " PART  " + (*ser)->getName() + "\n");
 							for(std::vector<User*>::iterator us = (*ser)->getUsersBegin(); us != (*ser)->getUsersEnd(); ++us)
-								send((*us)->getFd(), Message.c_str(), Message.length(), 0);
+								reply((*us), user->getUserPrefix(), "PART", (*ser)->getName(), "");
 							user->partChannel(*ser);
 							(*ser)->removeUser(user);
 						}
-						std::string Message(_serverPrefix + " 403 " + user->getNick() + " " + name + " :No such channel" + "\n");
-						send(user->getFd(), Message.c_str(), Message.length(), 0);
+						reply(user, "", "403", "", name + " :No such channel");
 					}
-					else if (cha == _channels.end()) {
-						//ERR_NOSUCHCHANNEL
-						std::string Message(_serverPrefix + " 403 " + user->getNick() + " " + name + " :No such channel" + "\n");
-						send(user->getFd(), Message.c_str(), Message.length(), 0);
-					}
-					else if ((*cha)->getNUsers() >= (*cha)->getMaxUsers()) {
-						//ERR_CHANNELISFULL
-						std::string Message(_serverPrefix + " 471 " + user->getNick() + " " + (*cha)->getName() + " :Cannot join channel (+l)" + "\n");
-						send(user->getFd(), Message.c_str(), Message.length(), 0);
-					}
+					//ERR_NOSUCHCHANNEL
+					else if (cha == _channels.end())
+						reply(user, "", "403", "", name + " :No such channel");
+					//ERR_CHANNELISFULL
+					else if ((*cha)->getNUsers() >= (*cha)->getMaxUsers())
+						reply(user, "", "471", "", (*cha)->getName() + " :Cannot join channel (+l)");
+					//ERR_BADCHANNELKEY
 					else if ((*cha)->getKey() != key) {
-						//ERR_BADCHANNELKEY
-						std::string Message(_serverPrefix + " 475 " + user->getNick() + " " + (*cha)->getName() + " :Cannot join channel (+k) - bad key" + "\n");
-						send(user->getFd(), Message.c_str(), Message.length(), 0);
+						reply(user, "", "475", "", (*cha)->getName() + " :Cannot join channel (+k) - bad key");
 					}
 					else {
 						(*cha)->addUser(user);
 						user->joinChannel(*cha);
 
-						{
 						//JOIN MESSAGE to all users of that channel
-						std::string Message(user->getUserPrefix() + " JOIN :" + (*cha)->getName() + "\n");
 						for(std::vector<User*>::iterator us = (*cha)->getUsersBegin(); us != (*cha)->getUsersEnd(); ++us)
-							send((*us)->getFd(), Message.c_str(), Message.length(), 0);
-						}
+							reply((*us), user->getUserPrefix(), "JOIN", ":" + (*cha)->getName(), "");
 
 						//RPL_TOPIC
-						std::string Message(_serverPrefix + " 332 " + user->getNick() + " " + (*cha)->getName() + " :" + (*cha)->getTopic() + "\n");
+						reply(user, "", "332", "", (*cha)->getName() + " :" + (*cha)->getTopic());
+
 						//RPL_NAMREPLY
-						Message.append(_serverPrefix + " 353 " + user->getNick() + " = " + (*cha)->getName() + " :");
+						std::string Message("= " + (*cha)->getName() + " :");
 						for (std::vector<User*>::iterator it = (*cha)->getUsersBegin(); it != (*cha)->getUsersEnd(); ++it)
-							Message.append((*it)->getNick() + " ");
-						Message.append("\n");
+							if (it != (*cha)->getUsersEnd() - 1)
+								Message.append((*it)->getNick() + " ");
+							else
+								Message.append((*it)->getNick());
+						reply(user, "", "353", "", Message);
+
 						//RPL_ENDOFNAMES
-						Message.append(_serverPrefix + " 366 " + user->getNick() + " " + (*cha)->getName() + " :End of Names list" + "\n");
-						send(user->getFd(), Message.c_str(), Message.length(), 0);
+						reply(user, "", "366", "", (*cha)->getName() + " :End of Names list");
 					}
 				}
 			}
 		}
+
 		//Works fine i guess
 		if (word == "PRIVMSG") {
 			std::string msgtarget, textToSend;
@@ -304,51 +293,40 @@ int Server::recvMessage(User* user) {
 			std::getline(info, textToSend);
 
 			textToSend.erase(0, textToSend.find_first_not_of(" 	:"));
-			std::cout << msgtarget << " : " << textToSend << "\n";
+			std::cout << msgtarget << " << " << textToSend << "\n";
 
-			if (msgtarget.length() <= 0) {
-				//ERR_NORECIPIENT
-				std::string Message(_serverPrefix + " 411 " + user->getNick() + " :No recipient given (PRIVMSG)" + "\n");
-				send(user->getFd(), Message.c_str(), Message.length(), 0);
-			}
-			else if (textToSend.length() <= 0) {
-				//ERR_NOTEXTTOSEND
-				std::string Message(_serverPrefix + " 412 " + user->getNick() + " :No text to send" + "\n");
-				send(user->getFd(), Message.c_str(), Message.length(), 0);
-			}
+			//ERR_NORECIPIENT
+			if (msgtarget.length() <= 0)
+				reply(user, "", "411", "", ":No recipient given (PRIVMSG)");
+			//ERR_NOTEXTTOSEND
+			else if (textToSend.length() <= 0)
+				reply(user, "", "412", "", ":No text to send");
 			else if ((*msgtarget.begin()) == '#') {
 				std::vector<Channel*>::iterator foundServer;
 				for (foundServer = _channels.begin(); foundServer != _channels.end(); ++foundServer)
 					if (msgtarget == (*foundServer)->getName())
 						break;
-				if (foundServer == _channels.end()) {
-					//ERR_CANNOTSENDTOCHAN
-					std::string Message(_serverPrefix + " 401 " + user->getNick() + " " + msgtarget + " :No such nick/channel" + "\n");
-					send(user->getFd(), Message.c_str(), Message.length(), 0);
-				}
-				else {
-					std::string Message(user->getUserPrefix() + " PRIVMSG " + msgtarget + " :" + textToSend + "\n");
+				//ERR_NOSUCHNICK
+				if (foundServer == _channels.end())
+					reply(user, "", "401", "", msgtarget + ":No such nick/channel");
+				else
 					for(std::vector<User*>::iterator it = (*foundServer)->getUsersBegin(); it != (*foundServer)->getUsersEnd(); ++it)
 						if ((*it)->getNick() != user->getNick())
-							send((*it)->getFd(), Message.c_str(), Message.length(), 0);
-				}
+							reply((*it), user->getUserPrefix(), "PRIVMSG", msgtarget, ":" + textToSend);
 			}
 			else {
 				std::vector<User*>::iterator foundUser;
 				for (foundUser = _users.begin(); foundUser != _users.end(); ++foundUser)
 					if (msgtarget == (*foundUser)->getNick())
 						break;
-				if (foundUser == _users.end()) {
-					//ERR_NOSUCHNICK
-					std::string Message(_serverPrefix + " 401 " + user->getNick() + " " + msgtarget + " :No such nick/channel" + "\n");
-					send(user->getFd(), Message.c_str(), Message.length(), 0);
-				}
-				else {
-					std::string Message(user->getUserPrefix() + " PRIVMSG " + msgtarget + " :" + textToSend + "\n");
-					send((*foundUser)->getFd(), Message.c_str(), Message.length(), 0);
-				}
+				//ERR_NOSUCHNICK
+				if (foundUser == _users.end())
+					reply(user, "", "401", "", msgtarget + ":No such nick/channel");
+				else
+					reply(user, user->getUserPrefix(), "PRIVMSG", msgtarget, ":" + textToSend);
 			}
 		}
+
 		//Works fine
 		if (word == "NICK"){
 			int correctNick = 1;
@@ -357,17 +335,16 @@ int Server::recvMessage(User* user) {
 			//Truncating the nick
 			if (nick.length() > 30)
 				nick = nick.substr(0, 30);
-			//No nick given
+
+			//ERR_NONICKNAMEGIVEN
 			else if (nick.length() <= 0) {
-				std::string errorMessage(_serverPrefix + " 431 " + user->getNick() + " :No nickname given" + "\n");
-				send(user->getFd(), errorMessage.c_str(), errorMessage.length(), 0);
+				reply(user, "", "431", "", ":No nickname given");
 				correctNick = 0;
 			}
 
-			//Invalid nickname
+			//ERR_ERRONEUSNICKNAME
 			else if (nick.find_first_not_of("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ[]{}\\|^`–-_") != nick.npos || isdigit(nick[0])) {
-				std::string errorMessage(_serverPrefix + " 432 " + user->getNick() + " " + nick + " :Erroneous nickname" + "\n");
-				send(user->getFd(), errorMessage.c_str(), errorMessage.length(), 0);
+				reply(user, "", "432", "", ":Erroneous nickname");
 				correctNick = 0;
 			}
 
@@ -376,32 +353,33 @@ int Server::recvMessage(User* user) {
 			for (foundUser = _users.begin(); foundUser != _users.end(); ++foundUser)
 				if (nick == (*foundUser)->getNick())
 					break;
+			//ERR_NICKNAMEINUSE
 			if (foundUser != _users.end()) {
-				std::string errorMessage(_serverPrefix + " 433 " + "* " + nick + " :Nickname is already in use." + "\n");
-				send(user->getFd(), errorMessage.c_str(), errorMessage.length(), 0);
+				reply(user, "", "433 *", nick, ":Nickname is already in use.");
 				correctNick = 0;
 			}
 
 			//Setting the nickname to user if it's correct
 			if (correctNick) {
-				user->setNick(nick);
 				if (user->getWelcome()) {
-					std::string Message(user->getUserPrefix() + " NICK :" + user->getNick() + "\n");
 					if (user->getNJoinedChannels() > 0) {
 						for(std::vector<Channel*>::iterator ser = user->getJoinedChannelsBegin(); ser != user->getJoinedChannelsEnd(); ++ser)
 							for(std::vector<User*>::iterator us = (*ser)->getUsersBegin(); us != (*ser)->getUsersEnd(); ++us)
 								if ((*us)->getFd() != user->getFd())
-									send((*us)->getFd(), Message.c_str(), Message.length(), 0);
+									reply(user, user->getUserPrefix(), "NICK", ":" + nick, "");
 					}
 					else
-						send(user->getFd(), Message.c_str(), Message.length(), 0);
+						reply(user, user->getUserPrefix(), "NICK", ":" + nick, "");
 				}
+				user->setNick(nick);
 			}
 		}
+
 		if (word == "USER"){
 			info >> word;
 			user->setUser(word);
 		}
+
 		//Works but need to add check for permission
 		//and not sure about setting the topic when not on that channel
 		if (word == "TOPIC"){
@@ -417,34 +395,35 @@ int Server::recvMessage(User* user) {
 					break;
 
 			if (found != _channels.end()) {
+				//Remove topic
 				if (topic == "") {
-					//Remove topic
 					(*found)->setTopic("");
 					for(std::vector<User*>::iterator it = (*found)->getUsersBegin(); it != (*found)->getUsersEnd(); ++it)
 						reply(*it, user->getUserPrefix(), "TOPIC", (*found)->getName(), ":");
 				}
+				//Change topic
 				else if (topic.length() > 0) {
-					//Change topic
 					(*found)->setTopic(topic);
 					for(std::vector<User*>::iterator it = (*found)->getUsersBegin(); it != (*found)->getUsersEnd(); ++it)
 						reply(*it, user->getUserPrefix(), "TOPIC", (*found)->getName(), ":" + (*found)->getTopic());
 				}
 				//RPL_NOTOPIC
 				else if ((*found)->getTopic().length() > 0)
-					reply(user, "", "331", user->getNick(), (*found)->getName() + " :No topic is set.");
+					reply(user, "", "331", "", (*found)->getName() + " :No topic is set.");
 				//RPL_TOPIC
 				else
-					reply(user, "", "332", user->getNick(), (*found)->getName() + " :" + (*found)->getTopic());
+					reply(user, "", "332", "", (*found)->getName() + " :" + (*found)->getTopic());
 			}
 		}
-		//Displaying a welcome message to a new connected client
+
+		//RPL_WELCOME
 		if (!user->getWelcome() && user->getUser().length() > 0 && user->getNick().length() > 0 && user->getAuthed()){
 			user->setWelcome();
-			user->setUserPrefix(":" + user->getNick() + "!" + user->getUser() + "@" + user->getHost());
-			//RPL_WELCOME
-			reply(user, "", "001", user->getNick(), ":Welcome to IRCQ+ " + user->getUserPrefix().substr(1, user->getUserPrefix().length() - 1));
+			reply(user, "", "001", "", ":Welcome to IRCQ+ " + user->getUserPrefix().substr(1, user->getUserPrefix().length() - 1));
 		}
 	}
+	// print(_users);
+	// print(_channels);
 	return 0;
 }
 

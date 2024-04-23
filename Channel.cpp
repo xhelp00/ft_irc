@@ -22,13 +22,15 @@ Channel::~Channel() {
 
 }
 
-std::string Channel::getName() { return _name; }
-std::string Channel::getTopic() { return _topic; }
-std::string Channel::getKey() { return _key; }
-uint32_t Channel::getNUsers() { return _nUsers; }
-uint32_t Channel::getMaxUsers() { return _maxUsers; }
+std::string Channel::getName() const { return _name; }
+std::string Channel::getTopic() const { return _topic; }
+std::string Channel::getKey() const { return _key; }
+uint32_t Channel::getNUsers() const { return _nUsers; }
+uint32_t Channel::getMaxUsers() const { return _maxUsers; }
 std::vector<User*>::iterator Channel::getUsersBegin() { return _users.begin(); }
 std::vector<User*>::iterator Channel::getUsersEnd() { return _users.end(); }
+std::vector<User*>::const_iterator Channel::getUsersBegin() const { return _users.begin(); }
+std::vector<User*>::const_iterator Channel::getUsersEnd() const { return _users.end(); }
 
 void Channel::setName(std::string name) { _name = name; }
 void Channel::setTopic(std::string topic) { _topic = topic; }
@@ -48,3 +50,10 @@ void Channel::removeUser(User* user) {
 
 bool Channel::operator == (const Channel& channel) const { return _name == channel._name; }
 bool Channel::operator != (const Channel& channel) const { return _name != channel._name; }
+
+std::ostream&	operator << (std::ostream& out, const Channel& channel) {
+	out << channel.getName() << " " << channel.getNUsers() << "|" << channel.getMaxUsers() << std::endl;
+	for (std::vector<User*>::const_iterator it = channel.getUsersBegin(); it != channel.getUsersEnd(); it++)
+		out << "	" << (*it)->getNick() << "| FD: " << (*it)->getFd() << std::endl;
+	return out;
+}

@@ -10,12 +10,19 @@
 #include <cstring>
 #include <algorithm>
 #include <sstream>
+#include <typeinfo>
 
 #include "Channel.hpp"
 #include "User.hpp"
 
-#define BLUE "\033[0;34m"
-#define END "\033[0m"
+#define RED "\e[0;31m"
+#define GREEN "\e[0;32m"
+#define YELLOW "\e[0;33m"
+#define BLUE "\e[0;34m"
+#define END "\e[0m"
+
+#define CHANNEL_TYPE typeid(std::vector<Channel*>).name()
+#define USER_TYPE typeid(std::vector<User*>).name()
 
 #include <map>
 
@@ -53,7 +60,6 @@ public:
 	void setPort(int port);
 
 	//Methods
-
 	void addUser(User* user);
 	void removeUser(User* user);
 	void addChannel(Channel* channel);
@@ -65,6 +71,18 @@ public:
 	int recvMessage(User* user);
 
 };
+
+template <typename T>
+void print(T& li){
+	std::string type(typeid(T).name());
+	if (type == CHANNEL_TYPE)
+		std::cout << GREEN << "Printing content of Channels" << std::endl;
+	else if (type == USER_TYPE)
+		std::cout << YELLOW << "Printing content of Users" << std::endl;
+	for (typename T::const_iterator it = li.begin(); it != li.end(); it++)
+		std::cout << (*(*it));
+	std::cout << END;
+}
 
 #endif // SERVER_HPP
 

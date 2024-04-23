@@ -11,7 +11,7 @@ class Channel;
 class User
 {
 private:
-	std::string _nick, _user, _host, _userPrefix;
+	std::string _nick, _user, _host;
 	std::vector<Channel*> _joinedChannels;
 	bool _welcome, _authed;
 	int _fd, _nJoinedChannels;
@@ -38,7 +38,6 @@ public:
 	void setNick(std::string nick);
 	void setUser(std::string user);
 	void setHost(std::string host);
-	void setUserPrefix(std::string userPrefix);
 	void setWelcome();
 	void setAuthed();
 	void setFd(int fd);
@@ -50,7 +49,8 @@ public:
 	bool operator == (const User& user) const;
 	bool operator != (const User& user) const;
 
-
 };
+
+std::ostream&	operator << (std::ostream& out, const User &user);
 
 #endif // USER_HPP
