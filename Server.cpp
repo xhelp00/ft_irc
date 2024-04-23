@@ -192,9 +192,9 @@ int Server::recvMessage(User* user) {
 					else {
 						for(std::vector<User*>::iterator it = (*found)->getUsersBegin(); it != (*found)->getUsersEnd(); ++it) {
 							if (partMessage.length() > 0)
-								reply((*it), (*it)->getUserPrefix(), "PART", (*found)->getName(), "");
+								reply((*it), user->getUserPrefix(), "PART", (*found)->getName(), partMessage);
 							else
-								reply((*it), (*it)->getUserPrefix(), "PART", (*found)->getName(), partMessage);
+								reply((*it), user->getUserPrefix(), "PART", (*found)->getName(), "");
 						}
 						user->partChannel(*found);
 						(*found)->removeUser(user);
@@ -323,7 +323,7 @@ int Server::recvMessage(User* user) {
 				if (foundUser == _users.end())
 					reply(user, "", "401", "", msgtarget + ":No such nick/channel");
 				else
-					reply(user, user->getUserPrefix(), "PRIVMSG", msgtarget, ":" + textToSend);
+					reply((*foundUser), user->getUserPrefix(), "PRIVMSG", msgtarget, ":" + textToSend);
 			}
 		}
 
@@ -422,8 +422,8 @@ int Server::recvMessage(User* user) {
 			reply(user, "", "001", "", ":Welcome to IRCQ+ " + user->getUserPrefix().substr(1, user->getUserPrefix().length() - 1));
 		}
 	}
-	// print(_users);
-	// print(_channels);
+	print(_users);
+	print(_channels);
 	return 0;
 }
 
