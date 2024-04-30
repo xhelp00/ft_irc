@@ -1,10 +1,11 @@
 #include "Channel.hpp"
 
-Channel::Channel(std::string name, std::string topic, std::string key, int maxUsers) : _name(name), _topic(topic), _key(key), _nUsers(0), _maxUsers(maxUsers) {
-
+Channel::Channel(std::string name, std::string topic, std::string key, User* chop, int maxUsers) : _name(name), _topic(topic), _key(key), _nUsers(0), _maxUsers(maxUsers) {
+	addOperator(chop);
+	addUser(chop);
 }
 
-Channel::Channel(const Channel& channel) : _name(channel._name), _topic(channel._topic), _key(channel._key), _users(channel._users), _nUsers(channel._nUsers), _maxUsers(channel._maxUsers) {
+Channel::Channel(const Channel& channel) : _name(channel._name), _topic(channel._topic), _key(channel._key), _users(channel._users), _operators(channel._operators), _nUsers(channel._nUsers), _maxUsers(channel._maxUsers) {
 
 }
 
@@ -31,6 +32,8 @@ std::vector<User*>::iterator Channel::getUsersBegin() { return _users.begin(); }
 std::vector<User*>::iterator Channel::getUsersEnd() { return _users.end(); }
 std::vector<User*>::const_iterator Channel::getUsersBegin() const { return _users.begin(); }
 std::vector<User*>::const_iterator Channel::getUsersEnd() const { return _users.end(); }
+std::vector<User*>::iterator Channel::getOperatorsBegin() { return _operators.begin(); }
+std::vector<User*>::iterator Channel::getOperatorsEnd() { return _operators.end(); }
 
 void Channel::setName(std::string name) { _name = name; }
 void Channel::setTopic(std::string topic) { _topic = topic; }
@@ -48,12 +51,32 @@ void Channel::removeUser(User* user) {
 	_nUsers--;
 }
 
+void Channel::addOperator(User* user) {
+	_operators.push_back(user);
+}
+
+void Channel::removeOperator(User* user) {
+	_operators.erase(std::remove(_operators.begin(), _operators.end(), user), _operators.end());
+}
+
+bool Channel::isOperator(User* user) const{
+	std::vector<User*>::const_iterator it;
+	for (it = _operators.begin(); it != _operators.end(); ++it)
+		if (user == (*it))
+			return true;
+	return false;
+}
+
 bool Channel::operator == (const Channel& channel) const { return _name == channel._name; }
 bool Channel::operator != (const Channel& channel) const { return _name != channel._name; }
 
 std::ostream&	operator << (std::ostream& out, const Channel& channel) {
 	out << channel.getName() << " " << channel.getNUsers() << "|" << channel.getMaxUsers() << std::endl;
-	for (std::vector<User*>::const_iterator it = channel.getUsersBegin(); it != channel.getUsersEnd(); it++)
-		out << "	" << (*it)->getNick() << "| FD: " << (*it)->getFd() << std::endl;
+	for (std::vector<User*>::const_iterator it = channel.getUsersBegin(); it != channel.getUsersEnd(); it++) {
+		out << "	";
+		if (channel.isOperator((*it)))
+			std::cout << "@";
+		std::cout << (*it)->getNick() << "| FD: " << (*it)->getFd() << std::endl;
+	}
 	return out;
 }

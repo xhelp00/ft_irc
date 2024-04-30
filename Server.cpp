@@ -43,9 +43,6 @@ Server::Server(int port, std::string pass) : _pass(pass), _serverPrefix(":IRCQ+"
 		throw std::runtime_error("Failed to add server socket to epoll");
 		close(_epollSocket);
 	}
-
-	addChannel(new Channel("#general", "Channel for general discussion", "", 5));
-	addChannel(new Channel("#random", "Channel for random discussion", "", 5));
 }
 
 Server::Server(const Server& server) : _users(server._users), _channels(server._channels), _pass(server._pass), _serverPrefix(server._serverPrefix), _serverSocket(server._serverSocket), _epollSocket(server._epollSocket), _port(server._port) {
@@ -130,7 +127,7 @@ int Server::recvMessage(User* user) {
 	// Parses the message into words and creates a response
 	while (info >> word){
 		std::cout << "Word: " << word << std::endl;
-		//Needs more testing
+		//Works fine
 		if (word == "PASS"){
 			std::string pass;
 			info >> pass;
@@ -140,21 +137,89 @@ int Server::recvMessage(User* user) {
 			else if (user->getAuthed() == 0)
 				user->setAuthed();
 		}
+
 		//Works fine
 		if (word == "QUIT"){
 			std::cout << "Client disconnected" << std::endl;
 			return 0;
 		}
+
 		//Need to clean memory after
 		if (word == "die"){
 			std::cout << "DIE COMMAND" << std::endl;
 			close(_serverSocket);
 			exit(0);
 		}
-		//Just a reply to client Ping command
+
+		//Works fine, just a reply to client Ping command
 		if (word == "PING")
 			reply(user, "", "PONG", "", _serverPrefix);
-		//Works only for leaving a current channel, needs more work
+
+		if (word == "KICK"){
+			std::string line, channelsToKicfFrom, channel, namesToKick, name, kickMessage;
+			std::getline(info, line);
+
+			line.erase(0, line.find_first_not_of(" 	"));
+
+			//ERR_NEEDMOREPARAMS
+			if (line.length() <= 0)
+				reply(user, "", "461", "", "KICK :Not enough parameters");
+			else {
+
+				std::stringstream arguments(line);
+
+				arguments >> channelsToKicfFrom;
+				arguments >> namesToKick;
+				std::getline(arguments, kickMessage);
+
+				std::stringstream channels(channelsToKicfFrom), names(namesToKick);
+
+				while (std::getline(channels, channel, ',')) {
+					// std::cout << "User {fd: " << user->getFd() << " nick: " << user->getNick() << "} is trying to join channel " + name + " with key " + key << std::endl;
+					std::vector<Channel*>::iterator cha;
+					for (cha = _channels.begin(); cha != _channels.end(); ++cha)
+						if (name == (*cha)->getName())
+							break;
+
+					//ERR_NOSUCHCHANNEL
+					if (cha == _channels.end())
+						reply(user, "", "403", "", channel + " :No such channel");
+					else {
+						std::vector<User*>::iterator oper;
+						for (oper = (*cha)->getUsersBegin(); oper != (*cha)->getUsersEnd(); ++oper)
+							if ((*oper)->getFd() == user->getFd())
+								break;
+						//ERR_NOTONCHANNEL
+						if (oper == (*cha)->getUsersEnd())
+							reply(user, "", "442", "", name + " :You're not on that channel");
+						//ERR_CHANOPRIVSNEEDED
+						else if (!(*cha)->isOperator(user))
+							reply(user, "", "482", "", (*cha)->getName() + " :You're not channel operator");
+						else {
+							while (std::getline(names, name, ',')) {
+								std::vector<User*>::iterator us;
+								for (us = (*cha)->getUsersBegin(); us != (*cha)->getUsersEnd(); ++us)
+									if ((*us)->getNick() == name)
+										break;
+								//ERR_USERNOTINCHANNEL
+								if (us == (*cha)->getUsersEnd())
+									reply(user, "", "441", "", (*us)->getNick() + " " + (*cha)->getName() + " :They aren't on that channel");
+								else {
+									for(std::vector<User*>::iterator it = (*cha)->getUsersBegin(); it != (*cha)->getUsersEnd(); ++it) {
+										if (kickMessage.length() > 0)
+											reply((*it), user->getUserPrefix(), "KICK", (*cha)->getName(), kickMessage);
+										else
+											reply((*it), user->getUserPrefix(), "KICK", (*cha)->getName(), "");
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		//Works fine
 		if (word == "PART"){
 			std::string line, namesToLeave, name, partMessage;
 			std::getline(info, line);
@@ -200,10 +265,12 @@ int Server::recvMessage(User* user) {
 						(*found)->removeUser(user);
 					}
 				}
+				if ((*found)->getNUsers() <= 0)
+					removeChannel((*found));
 			}
 		}
 
-		//Works need to add creating a new channel when joining an non existing channel
+		//Works need to add channel modes
 		/*
 			JOIN #toast,#ircv3 mysecret
 
@@ -232,32 +299,36 @@ int Server::recvMessage(User* user) {
 
 				while (std::getline(names, name, ',')) {
 					std::getline(keys, key, ',');
-					std::cout << "User {fd: " << user->getFd() << " nick: " << user->getNick() << "} is trying to join channel " + name + " with key " + key << std::endl;
+					// std::cout << "User {fd: " << user->getFd() << " nick: " << user->getNick() << "} is trying to join channel " + name + " with key " + key << std::endl;
 					std::vector<Channel*>::iterator cha;
 					for (cha = _channels.begin(); cha != _channels.end(); ++cha)
 						if (name == (*cha)->getName())
 							break;
 
-					//Leave all joined channels
-					if (name == "#0" || name == "0") {
-						for (std::vector<Channel*>::iterator ser = user->getJoinedChannelsBegin(); ser != user->getJoinedChannelsEnd(); ++ser) {
-							for(std::vector<User*>::iterator us = (*ser)->getUsersBegin(); us != (*ser)->getUsersEnd(); ++us)
-								reply((*us), user->getUserPrefix(), "PART", (*ser)->getName(), "");
-							user->partChannel(*ser);
-							(*ser)->removeUser(user);
-						}
-						reply(user, "", "403", "", name + " :No such channel");
+					//Create a new channel
+					if (cha == _channels.end()) {
+						Channel* create = new Channel(name, "", "", user, 5);
+						addChannel(create);
+						user->joinChannel(create);
+
+						//JOIN MESSAGE
+						reply(user, user->getUserPrefix(), "JOIN", ":" + create->getName(), "");
+
+						//RPL_TOPIC
+						reply(user, "", "332", "", create->getName() + " :" + create->getTopic());
+
+						//RPL_NAMREPLY
+						reply(user, "", "353", "", "= " + create->getName() + " :@" + user->getNick());
+
+						//RPL_ENDOFNAMES
+						reply(user, "", "366", "", create->getName() + " :End of Names list");
 					}
-					//ERR_NOSUCHCHANNEL
-					else if (cha == _channels.end())
-						reply(user, "", "403", "", name + " :No such channel");
 					//ERR_CHANNELISFULL
 					else if ((*cha)->getNUsers() >= (*cha)->getMaxUsers())
 						reply(user, "", "471", "", (*cha)->getName() + " :Cannot join channel (+l)");
 					//ERR_BADCHANNELKEY
-					else if ((*cha)->getKey() != key) {
+					else if ((*cha)->getKey() != key)
 						reply(user, "", "475", "", (*cha)->getName() + " :Cannot join channel (+k) - bad key");
-					}
 					else {
 						(*cha)->addUser(user);
 						user->joinChannel(*cha);
@@ -271,11 +342,14 @@ int Server::recvMessage(User* user) {
 
 						//RPL_NAMREPLY
 						std::string Message("= " + (*cha)->getName() + " :");
-						for (std::vector<User*>::iterator it = (*cha)->getUsersBegin(); it != (*cha)->getUsersEnd(); ++it)
+						for (std::vector<User*>::iterator it = (*cha)->getUsersBegin(); it != (*cha)->getUsersEnd(); ++it) {
+							if ((*cha)->isOperator((*it)))
+								Message.append("@");
 							if (it != (*cha)->getUsersEnd() - 1)
 								Message.append((*it)->getNick() + " ");
 							else
 								Message.append((*it)->getNick());
+						}
 						reply(user, "", "353", "", Message);
 
 						//RPL_ENDOFNAMES
@@ -285,7 +359,7 @@ int Server::recvMessage(User* user) {
 			}
 		}
 
-		//Works fine i guess
+		//Works fine
 		if (word == "PRIVMSG") {
 			std::string msgtarget, textToSend;
 			info >> msgtarget;
@@ -325,6 +399,14 @@ int Server::recvMessage(User* user) {
 				else
 					reply((*foundUser), user->getUserPrefix(), "PRIVMSG", msgtarget, ":" + textToSend);
 			}
+		}
+
+		//Works fine
+		if (word == "LIST"){
+			for (std::vector<Channel*>::iterator it = _channels.begin(); it != _channels.end(); ++it)
+				reply(user, "", "322", "", (*it)->getName() + " :" + (*it)->getTopic());
+			//RPL_ENDOFNAMES
+			reply(user, "", "323", "", ":End of LIST");
 		}
 
 		//Works fine
@@ -380,8 +462,7 @@ int Server::recvMessage(User* user) {
 			user->setUser(word);
 		}
 
-		//Works but need to add check for permission
-		//and not sure about setting the topic when not on that channel
+		//Works fine
 		if (word == "TOPIC"){
 			std::string channelTo, topic;
 			info >> channelTo;
@@ -394,9 +475,15 @@ int Server::recvMessage(User* user) {
 				if (channelTo == (*found)->getName())
 					break;
 
-			if (found != _channels.end()) {
+			//ERR_NOSUCHCHANNEL
+			if (found == _channels.end())
+				reply(user, "", "403", "", channelTo + " :No such channel");
+			else if (found != _channels.end()) {
+				//ERR_CHANOPRIVSNEEDED
+				if (!(*found)->isOperator(user))
+					reply(user, "", "482", "", (*found)->getName() + " :You're not channel operator");
 				//Remove topic
-				if (topic == "") {
+				else if (topic == "") {
 					(*found)->setTopic("");
 					for(std::vector<User*>::iterator it = (*found)->getUsersBegin(); it != (*found)->getUsersEnd(); ++it)
 						reply(*it, user->getUserPrefix(), "TOPIC", (*found)->getName(), ":");

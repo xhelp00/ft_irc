@@ -18,11 +18,11 @@ class User;
 class Channel {
 private:
 	std::string _name, _topic, _key;
-	std::vector<User*> _users;
+	std::vector<User*> _users, _operators;
 	uint32_t _nUsers, _maxUsers;
 public:
 	//Cannonical form : default constructor, copy constructor, assignment operator, destructor
-	Channel(std::string name, std::string topic, std::string key, int maxUsers);
+	Channel(std::string name, std::string topic, std::string key, User* chop, int maxUsers);
 	Channel(const Channel& channel);
 	Channel& operator = (const Channel& channel);
 	~Channel();
@@ -37,6 +37,8 @@ public:
 	std::vector<User*>::iterator getUsersEnd();
 	std::vector<User*>::const_iterator getUsersBegin() const;
 	std::vector<User*>::const_iterator getUsersEnd() const;
+	std::vector<User*>::iterator getOperatorsBegin();
+	std::vector<User*>::iterator getOperatorsEnd();
 
 	//Setters
 	void setName(std::string name);
@@ -48,6 +50,10 @@ public:
 	//Methods
 	void addUser(User* user);
 	void removeUser(User* user);
+	void addOperator(User* user);
+	void removeOperator(User* user);
+
+	bool isOperator(User* user) const;
 
 	bool operator == (const Channel& channel) const;
 	bool operator != (const Channel& channel) const;
