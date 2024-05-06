@@ -3,9 +3,11 @@
 Channel::Channel(std::string name, std::string topic, std::string key, User* chop, int maxUsers) : _name(name), _topic(topic), _key(key), _nUsers(0), _maxUsers(maxUsers) {
 	addOperator(chop);
 	addUser(chop);
+	_modes.i = false;
+	_modes.t = true;
 }
 
-Channel::Channel(const Channel& channel) : _name(channel._name), _topic(channel._topic), _key(channel._key), _users(channel._users), _operators(channel._operators), _nUsers(channel._nUsers), _maxUsers(channel._maxUsers) {
+Channel::Channel(const Channel& channel) : _name(channel._name), _topic(channel._topic), _key(channel._key), _users(channel._users), _operators(channel._operators), _nUsers(channel._nUsers), _maxUsers(channel._maxUsers), _modes(channel._modes) {
 
 }
 
@@ -34,6 +36,8 @@ std::vector<User*>::const_iterator Channel::getUsersBegin() const { return _user
 std::vector<User*>::const_iterator Channel::getUsersEnd() const { return _users.end(); }
 std::vector<User*>::iterator Channel::getOperatorsBegin() { return _operators.begin(); }
 std::vector<User*>::iterator Channel::getOperatorsEnd() { return _operators.end(); }
+bool Channel::isInviteOnly() const { return _modes.i; }
+bool Channel::isTopicOnlyByOperators() const { return _modes.t; }
 
 void Channel::setName(std::string name) { _name = name; }
 void Channel::setTopic(std::string topic) { _topic = topic; }
@@ -41,12 +45,17 @@ void Channel::setKey(std::string key) { _key = key; }
 void Channel::setNUsers(uint32_t nUsers) { _nUsers = nUsers; }
 void Channel::setMaxUsers(uint32_t maxUsers) { _maxUsers = maxUsers; }
 
+void Channel::setInviteOnly(bool inviteOnly) { _modes.i = inviteOnly; }
+void Channel::setTopicOnlyByOperators(bool topicOnlyByOperators) { _modes.t = topicOnlyByOperators; }
+
 void Channel::addUser(User* user) {
 	_users.push_back(user);
 	_nUsers++;
 }
 
 void Channel::removeUser(User* user) {
+	if (isOperator(user))
+		removeOperator(user);
 	_users.erase(std::remove(_users.begin(), _users.end(), user), _users.end());
 	_nUsers--;
 }
@@ -66,9 +75,6 @@ bool Channel::isOperator(User* user) const{
 			return true;
 	return false;
 }
-
-bool Channel::operator == (const Channel& channel) const { return _name == channel._name; }
-bool Channel::operator != (const Channel& channel) const { return _name != channel._name; }
 
 std::ostream&	operator << (std::ostream& out, const Channel& channel) {
 	out << channel.getName() << " " << channel.getNUsers() << "|" << channel.getMaxUsers() << std::endl;

@@ -15,11 +15,19 @@
 
 class User;
 
+union Modes
+{
+	bool i; //Invite-only
+	bool t; //TOPIC only by operators
+};
+
+
 class Channel {
 private:
 	std::string _name, _topic, _key;
 	std::vector<User*> _users, _operators;
 	uint32_t _nUsers, _maxUsers;
+	Modes _modes;
 public:
 	//Cannonical form : default constructor, copy constructor, assignment operator, destructor
 	Channel(std::string name, std::string topic, std::string key, User* chop, int maxUsers);
@@ -39,6 +47,8 @@ public:
 	std::vector<User*>::const_iterator getUsersEnd() const;
 	std::vector<User*>::iterator getOperatorsBegin();
 	std::vector<User*>::iterator getOperatorsEnd();
+	bool isInviteOnly() const;
+	bool isTopicOnlyByOperators() const;
 
 	//Setters
 	void setName(std::string name);
@@ -46,6 +56,8 @@ public:
 	void setKey(std::string key);
 	void setNUsers(uint32_t nUsers);
 	void setMaxUsers(uint32_t maxUsers);
+	void setInviteOnly(bool inviteOnly);
+	void setTopicOnlyByOperators(bool topicOnlyByOperators);
 
 	//Methods
 	void addUser(User* user);
@@ -54,9 +66,6 @@ public:
 	void removeOperator(User* user);
 
 	bool isOperator(User* user) const;
-
-	bool operator == (const Channel& channel) const;
-	bool operator != (const Channel& channel) const;
 };
 
 std::ostream&	operator << (std::ostream& out, const Channel& channel);

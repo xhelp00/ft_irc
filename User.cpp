@@ -54,7 +54,4 @@ void User::partChannel(Channel* channel) {
 	_nJoinedChannels--;
 }
 
-bool User::operator == (const User& user) const { return _nick == user._nick; }
-bool User::operator != (const User& user) const { return _nick != user._nick; }
-
 std::ostream&	operator << (std::ostream& out, const User &user) {out << user.getNick() << " | FD: " << user.getFd() << std::endl; return out;}

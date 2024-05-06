@@ -155,6 +155,107 @@ int Server::recvMessage(User* user) {
 		if (word == "PING")
 			reply(user, "", "PONG", "", _serverPrefix);
 
+		/*
+			MODE #general +k-l pass
+		*/
+		if (word == "MODE") {
+			std::string line, target, modes;
+			std::getline(info, line);
+
+			std::stringstream arguments(line);
+
+			arguments >> target;
+			arguments >> modes;
+
+			//ERR_NEEDMOREPARAMS
+			if (target.length() <= 0)
+				reply(user, "", "461", "", "MODE :Not enough parameters");
+			//Channel mode
+			else if ((*target.begin()) == '#') {
+				std::vector<Channel*>::iterator foundServer;
+				for (foundServer = _channels.begin(); foundServer != _channels.end(); ++foundServer)
+					if (target == (*foundServer)->getName())
+						break;
+				//ERR_NOSUCHNICK
+				if (foundServer == _channels.end())
+					reply(user, "", "401", "", target + ":No such nick/channel");
+				//ERR_CHANOPRIVSNEEDED
+				else if (!(*foundServer)->isOperator(user) && modes.length() > 0)
+					reply(user, "", "482", "", (*foundServer)->getName() + " :You're not channel operator");
+				else {
+					char sign = 0;
+					for (std::string::iterator m = modes.begin(); m != modes.end(); ++m) {
+						if (*m == '-' || *m == '+')
+							sign = *m;
+						//Give/take channel operator privilege
+						else if (*m == 'o') {
+							//ERR_NEEDMOREPARAMS
+							if (sign == 0)
+								reply(user, "", "461", "", "MODE :Not enough parameters");
+							else {
+								std::string nick;
+								arguments >> nick;
+								nick.erase(0, nick.find_first_not_of(" 	"));
+								if (nick.length() > 0) {
+									std::vector<User*>::iterator foundUser;
+									for (foundUser = (*foundServer)->getUsersBegin(); foundUser != (*foundServer)->getUsersEnd(); ++foundUser)
+										if (nick == (*foundUser)->getNick())
+											break;
+									std::cout << "DEBUG::: " << nick << std::endl;
+									//ERR_NEEDMOREPARAMS
+									if (foundUser == (*foundServer)->getUsersEnd())
+										reply(user, "", "441", "", nick + " " + (*foundServer)->getName() + " :They aren't on that channel");
+									//Deoperate user
+									else if (sign == '-')
+										(*foundServer)->removeOperator(*foundUser);
+									//Give user operator statuss
+									else if (sign == '+')
+										(*foundServer)->addOperator(*foundUser);
+								}
+								//ERR_NEEDMOREPARAMS
+								else
+									reply(user, "", "461", "", "MODE :Not enough parameters");
+							}
+						}
+						else {
+							std::string ch(1, *m);
+							reply(user, "", "472", "", ch + " :is unknown mode char to me for " + target);
+						}
+					}
+				}
+			}
+			// //User mode
+			// else {
+			// 	std::vector<User*>::iterator foundUser;
+			// 	for (foundUser = _users.begin(); foundUser != _users.end(); ++foundUser)
+			// 		if (target == (*foundUser)->getNick())
+			// 			break;
+			// 	//ERR_USERSDONTMATCH
+			// 	if (foundUser == _users.end())
+			// 		reply(user, "", "502", "", target + ":Cannot change mode for other users");
+			// 	else {
+			// 		char sign = 0;
+			// 		for (std::string::iterator m = modes.begin(); m != modes.end(); ++m) {
+			// 			if (*m == '-')
+			// 				sign = '-';
+			// 			else if (*m = '+')
+			// 				sign = '+';
+			// 			else if (*m == 'o') {
+			// 				//Deoperate user
+			// 				if (sign == '-') {
+
+			// 				}
+			// 				//Give user operator status
+			// 				else if (sign == '+') {
+
+			// 				}
+			// 			}
+			// 		}
+			// 	}
+			// }
+		}
+
+		//Works fine
 		if (word == "KICK"){
 			std::string line, channelsToKicfFrom, channel, namesToKick, name, kickMessage;
 			std::getline(info, line);
@@ -172,13 +273,15 @@ int Server::recvMessage(User* user) {
 				arguments >> namesToKick;
 				std::getline(arguments, kickMessage);
 
+				kickMessage.erase(0, kickMessage.find_first_not_of(" 	:"));
+
 				std::stringstream channels(channelsToKicfFrom), names(namesToKick);
 
 				while (std::getline(channels, channel, ',')) {
 					// std::cout << "User {fd: " << user->getFd() << " nick: " << user->getNick() << "} is trying to join channel " + name + " with key " + key << std::endl;
 					std::vector<Channel*>::iterator cha;
 					for (cha = _channels.begin(); cha != _channels.end(); ++cha)
-						if (name == (*cha)->getName())
+						if (channel == (*cha)->getName())
 							break;
 
 					//ERR_NOSUCHCHANNEL
@@ -203,14 +306,16 @@ int Server::recvMessage(User* user) {
 										break;
 								//ERR_USERNOTINCHANNEL
 								if (us == (*cha)->getUsersEnd())
-									reply(user, "", "441", "", (*us)->getNick() + " " + (*cha)->getName() + " :They aren't on that channel");
+									reply(user, "", "441", "", name + " " + (*cha)->getName() + " :They aren't on that channel");
 								else {
 									for(std::vector<User*>::iterator it = (*cha)->getUsersBegin(); it != (*cha)->getUsersEnd(); ++it) {
 										if (kickMessage.length() > 0)
-											reply((*it), user->getUserPrefix(), "KICK", (*cha)->getName(), kickMessage);
+											reply((*it), user->getUserPrefix(), "KICK", (*cha)->getName(), (*us)->getNick() + " :" + kickMessage);
 										else
-											reply((*it), user->getUserPrefix(), "KICK", (*cha)->getName(), "");
+											reply((*it), user->getUserPrefix(), "KICK", (*cha)->getName(), (*us)->getNick() + " :" + user->getNick());
 									}
+									(*cha)->removeUser(*us);
+									(*us)->partChannel(*cha);
 								}
 							}
 						}
@@ -457,6 +562,7 @@ int Server::recvMessage(User* user) {
 			}
 		}
 
+		//Works fine
 		if (word == "USER"){
 			info >> word;
 			user->setUser(word);
@@ -479,8 +585,15 @@ int Server::recvMessage(User* user) {
 			if (found == _channels.end())
 				reply(user, "", "403", "", channelTo + " :No such channel");
 			else if (found != _channels.end()) {
+				std::vector<User*>::iterator oper;
+				for (oper = (*found)->getUsersBegin(); oper != (*found)->getUsersEnd(); ++oper)
+					if ((*oper)->getFd() == user->getFd())
+						break;
+				//ERR_NOTONCHANNEL
+				if (oper == (*found)->getUsersEnd())
+					reply(user, "", "442", "", user->getNick() + " :You're not on that channel");
 				//ERR_CHANOPRIVSNEEDED
-				if (!(*found)->isOperator(user))
+				else if (!(*found)->isOperator(user))
 					reply(user, "", "482", "", (*found)->getName() + " :You're not channel operator");
 				//Remove topic
 				else if (topic == "") {
