@@ -13,9 +13,16 @@
 
 #include "User.hpp"
 
+#define RED "\e[0;31m"
+#define GREEN "\e[0;32m"
+#define YELLOW "\e[0;33m"
+#define BLUE "\e[0;34m"
+#define CYAN "\e[0;36m"
+#define END "\e[0m"
+
 class User;
 
-union Modes
+struct Modes
 {
 	bool i; //Invite-only
 	bool t; //TOPIC only by operators
@@ -66,6 +73,7 @@ public:
 	void removeOperator(User* user);
 
 	bool isOperator(User* user) const;
+	bool isUserJoined(User* user) const;
 };
 
 std::ostream&	operator << (std::ostream& out, const Channel& channel);

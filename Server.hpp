@@ -6,6 +6,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <cstring>
 #include <algorithm>
@@ -14,12 +15,6 @@
 
 #include "Channel.hpp"
 #include "User.hpp"
-
-#define RED "\e[0;31m"
-#define GREEN "\e[0;32m"
-#define YELLOW "\e[0;33m"
-#define BLUE "\e[0;34m"
-#define END "\e[0m"
 
 #define CHANNEL_TYPE typeid(std::vector<Channel*>).name()
 #define USER_TYPE typeid(std::vector<User*>).name()
@@ -31,6 +26,7 @@ class Server
 private:
 	std::vector<User*> _users;
 	std::vector<Channel*> _channels;
+	User* _serverUser;
 	std::string _pass, _serverPrefix;
 	int _serverSocket, _epollSocket, _port;
 public:
@@ -70,6 +66,15 @@ public:
 	int acceptConnection();
 	int recvMessage(User* user);
 
+	//Commands
+	void TOPIC(std::stringstream& info, User* user);
+	void NICK(std::stringstream& info, User* user);
+	void PRIVMSG(std::stringstream& info, User* user);
+	void JOIN(std::stringstream& info, User* user);
+	void PART(std::stringstream& info, User* user);
+	void KICK(std::stringstream& info, User* user);
+	void MODE(std::stringstream& info, User* user);
+	void INVITE(std::stringstream& info, User* user);
 };
 
 template <typename T>

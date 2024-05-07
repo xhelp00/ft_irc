@@ -12,7 +12,6 @@ class User
 {
 private:
 	std::string _nick, _user, _host;
-	std::vector<Channel*> _joinedChannels;
 	bool _welcome, _authed;
 	int _fd, _nJoinedChannels;
 public:
@@ -31,8 +30,6 @@ public:
 	bool getAuthed() const;
 	int getFd() const;
 	int getNJoinedChannels() const;
-	std::vector<Channel*>::iterator getJoinedChannelsBegin();
-	std::vector<Channel*>::iterator getJoinedChannelsEnd();
 
 	//Setters
 	void setNick(std::string nick);
@@ -41,11 +38,6 @@ public:
 	void setWelcome();
 	void setAuthed();
 	void setFd(int fd);
-
-	//Methods
-	void joinChannel(Channel* channel);
-	void partChannel(Channel* channel);
-
 };
 
 std::ostream&	operator << (std::ostream& out, const User &user);

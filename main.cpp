@@ -1,18 +1,3 @@
-#include <cstring>
-#include <iostream>
-#include <sstream>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
-#include <netdb.h>
-#include <arpa/inet.h>
-#include <sys/epoll.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <stdlib.h>
-#include <vector>
-#include <algorithm>
-
 #include "User.hpp"
 #include "Channel.hpp"
 #include "Server.hpp"
@@ -29,8 +14,9 @@ int main(int argc, char** argv) {
 		Server server = Server(atoi(argv[1]), argv[2]);
 
 		struct epoll_event events[5];
+		int running = 1;
 		// recieving data
-		while (true) {
+		while (running) {
 			int nfds = epoll_wait(server.getEpollSocket(), events, 5, -1);
 			if (nfds == -1)
 				throw std::runtime_error("Failed to wait for events");
@@ -39,8 +25,8 @@ int main(int argc, char** argv) {
 				User *user = reinterpret_cast<User*>(events[i].data.ptr);
 				if (user->getFd() == server.getServerSocket())
 					server.acceptConnection();
-				else
-					server.recvMessage(user);
+				else if (server.recvMessage(user) == -1)
+					running = 0;
 			}
 		}
 		return 0;
