@@ -19,8 +19,6 @@
 #define CHANNEL_TYPE typeid(std::vector<Channel*>).name()
 #define USER_TYPE typeid(std::vector<User*>).name()
 
-#include <map>
-
 class Server
 {
 private:
@@ -70,11 +68,12 @@ public:
 	void TOPIC(std::stringstream& info, User* user);
 	void NICK(std::stringstream& info, User* user);
 	void PRIVMSG(std::stringstream& info, User* user);
-	void JOIN(std::stringstream& info, User* user);
+	void JOIN(std::stringstream& info, User* user, bool invited);
 	void PART(std::stringstream& info, User* user);
 	void KICK(std::stringstream& info, User* user);
 	void MODE(std::stringstream& info, User* user);
 	void INVITE(std::stringstream& info, User* user);
+	void WHO(std::stringstream& info, User* user);
 };
 
 template <typename T>

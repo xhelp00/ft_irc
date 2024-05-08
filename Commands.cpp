@@ -132,7 +132,7 @@ void Server::PRIVMSG(std::stringstream& info, User* user) {
 				break;
 		//ERR_NOSUCHNICK
 		if (foundServer == _channels.end())
-			reply(user, "", "401", "", msgtarget + ":No such nick/channel");
+			reply(user, "", "401", "", msgtarget + " :No such nick/channel");
 		else
 			for(std::vector<User*>::iterator it = (*foundServer)->getUsersBegin(); it != (*foundServer)->getUsersEnd(); ++it)
 				if ((*it)->getNick() != user->getNick())
@@ -145,13 +145,13 @@ void Server::PRIVMSG(std::stringstream& info, User* user) {
 				break;
 		//ERR_NOSUCHNICK
 		if ((foundUser == _users.end()))
-			reply(user, "", "401", "", msgtarget + ":No such nick/channel");
+			reply(user, "", "401", "", msgtarget + " :No such nick/channel");
 		else
 			reply((*foundUser), user->getUserPrefix(), "PRIVMSG", msgtarget, ":" + textToSend);
 	}
 }
 
-void Server::JOIN(std::stringstream& info, User* user) {
+void Server::JOIN(std::stringstream& info, User* user, bool invited) {
 	std::string line, namesToJoin, name, keysToJoin, key;
 	std::getline(info, line);
 
@@ -201,7 +201,7 @@ void Server::JOIN(std::stringstream& info, User* user) {
 			else if ((*cha)->getKey() != key)
 				reply(user, "", "475", "", (*cha)->getName() + " :Cannot join channel (+k) - bad key");
 			//ERR_INVITEONLYCHAN
-			else if ((*cha)->isInviteOnly())
+			else if ((*cha)->isInviteOnly() && !invited)
 				reply(user, "", "473", "", (*cha)->getName() + " :Cannot join channel (+i) - invite only");
 			else {
 				(*cha)->addUser(user);
@@ -360,9 +360,9 @@ void Server::MODE(std::stringstream& info, User* user) {
 				break;
 		//ERR_NOSUCHNICK
 		if (foundServer == _channels.end())
-			reply(user, "", "401", "", target + ":No such nick/channel");
+			reply(user, "", "401", "", target + " :No such nick/channel");
 		//ERR_CHANOPRIVSNEEDED
-		else if (!(*foundServer)->isOperator(user) && modes.length() > 0)
+		else if (!(*foundServer)->isOperator(user) && modes.length() > 0 && (*modes.begin()) != 'b')
 			reply(user, "", "482", "", (*foundServer)->getName() + " :You're not channel operator");
 		//RPL_CHANNELMODEIS
 		else if (modes.length() <= 0) {
@@ -487,6 +487,9 @@ void Server::MODE(std::stringstream& info, User* user) {
 						}
 						break;
 
+					case 'b':
+						break;
+
 					//ERR_UNKNOWNMODE
 					default:
 						std::string ch(1, *m);
@@ -499,7 +502,67 @@ void Server::MODE(std::stringstream& info, User* user) {
 }
 
 void Server::INVITE(std::stringstream& info, User* user) {
-	(void) info, (void) user;
+	std::string nick, channel;
+	info >> nick;
+	info >> channel;
+
+	//ERR_NEEDMOREPARAMS
+	if (nick.length() <= 0 || channel.length() <= 0)
+		reply(user, "", "461", "", "INVITE :Not enough parameters");
+	else {
+		std::vector<User*>::iterator foundUser = _users.begin();
+		for (; foundUser != _users.end(); ++foundUser)
+			if ((*foundUser)->getNick() == nick)
+				break;
+		//ERR_NOSUCHNICK
+		if (foundUser == _users.end())
+			reply(user, "", "401", "", nick + " :No such nick/channel");
+		else {
+			std::vector<Channel*>::iterator foundChannel = _channels.begin();
+			for (; foundChannel != _channels.end(); ++foundChannel)
+				if ((*foundChannel)->getName() == channel)
+					break;
+			//RPL_INVITING
+			if (foundChannel == _channels.end()) {
+				reply(user, "", "341", "", nick + " " + channel);
+				std::stringstream ss;
+				ss << channel;
+				Server::JOIN(ss, *foundUser, true);
+			}
+			//ERR_USERONCHANNEL
+			else if ((*foundChannel)->isUserJoined(*foundUser))
+				reply(user, "", "443", "", nick + " " + channel + " :is already on channel");
+			//ERR_NOTONCHANNEL
+			else if (!(*foundChannel)->isUserJoined(user))
+				reply(user, "", "442", "", nick + " :You're not on that channel");
+			//ERR_CHANOPRIVSNEEDED
+			else if ((*foundChannel)->isOperator(user) && (*foundChannel)->isInviteOnly())
+				reply(user, "", "482", "", (*foundChannel)->getName() + " :You're not channel operator");
+			//RPL_INVITING
+			else {
+				reply(user, "", "341", "", nick + " " + channel);
+				std::stringstream ss;
+				ss << channel;
+				Server::JOIN(ss, *foundUser, true);
+			}
+		}
+	}
+}
+
+void Server::WHO(std::stringstream& info, User* user) {
+	std::string channel;
+	info >> channel;
+
+	std::vector<Channel*>::iterator foundChannel = _channels.begin();
+	for (; foundChannel != _channels.end(); ++foundChannel)
+		if ((*foundChannel)->getName() == channel)
+			break;
+	//RPL_WHOREPLY
+	if (foundChannel != _channels.end())
+		for (std::vector<User*>::iterator it = (*foundChannel)->getUsersBegin(); it != (*foundChannel)->getUsersEnd(); ++it)
+			reply(user, "", "352", "", channel + " " + (*it)->getUser() + " " + (*it)->getNick());
+	//RPL_ENDOFNAMES
+	reply(user, "", "315", "", getServerPrefix().erase(0, 1) + " :End of WHO list");
 }
 
 

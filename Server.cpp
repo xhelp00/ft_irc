@@ -151,6 +151,7 @@ int Server::recvMessage(User* user) {
 		if (word == "MODE")
 			Server::MODE(info, user);
 
+		//Works fine
 		if (word == "INVITE")
 			Server::INVITE(info, user);
 
@@ -172,7 +173,7 @@ int Server::recvMessage(User* user) {
 			keysToJoin = mysecret
 		*/
 		if (word == "JOIN")
-			Server::JOIN(info, user);
+			Server::JOIN(info, user, false);
 
 		//Works fine
 		if (word == "PRIVMSG")
@@ -185,6 +186,9 @@ int Server::recvMessage(User* user) {
 			//RPL_ENDOFNAMES
 			reply(user, "", "323", "", ":End of LIST");
 		}
+
+		if (word == "WHO")
+			Server::WHO(info, user);
 
 		//Works fine
 		if (word == "NICK")
