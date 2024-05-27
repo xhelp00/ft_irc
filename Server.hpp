@@ -25,7 +25,7 @@ private:
 	std::vector<User*> _users;
 	std::vector<Channel*> _channels;
 	User* _serverUser;
-	std::string _pass, _serverPrefix;
+	std::string _pass, _serverPrefix, _message;
 	int _serverSocket, _epollSocket, _port;
 public:
 	//Cannonical form : default constructor, copy constructor, assignment operator, destructor
@@ -65,10 +65,11 @@ public:
 	int recvMessage(User* user);
 
 	//Commands
+	void JOIN(std::stringstream& info, User* user, bool invited);
+
 	void TOPIC(std::stringstream& info, User* user);
 	void NICK(std::stringstream& info, User* user);
 	void PRIVMSG(std::stringstream& info, User* user);
-	void JOIN(std::stringstream& info, User* user, bool invited);
 	void PART(std::stringstream& info, User* user);
 	void KICK(std::stringstream& info, User* user);
 	void MODE(std::stringstream& info, User* user);

@@ -111,8 +111,12 @@ int Server::recvMessage(User* user) {
 		return (std::cerr << "Error in recv(). SAD" << std::endl, 1);
 
 	std::cout << "BuFFer: " << buffer;
+	_message.append(buffer);
+	if (_message.find_first_of("\n") == _message.npos)
+		return 0;
 
-	std::stringstream info(buffer);
+	std::cout << "Message: " << _message;
+	std::stringstream info(_message);
 	std::string word;
 	// Parses the message into words and creates a response
 	while (info >> word){
@@ -128,58 +132,20 @@ int Server::recvMessage(User* user) {
 				user->setAuthed();
 		}
 
-		//Works fine
 		if (word == "QUIT"){
 			std::cout << "Client disconnected" << std::endl;
 			removeUser(user);
 			return 0;
 		}
 
-		//Need to clean memory after
 		if (word == "die"){
 			std::cout << "DIE COMMAND" << std::endl;
 			return -1;
 		}
 
-		//Works fine, just a reply to client Ping command
 		if (word == "PING")
 			reply(user, "", "PONG", "", _serverPrefix);
 
-		/*
-			MODE #general +k-l pass
-		*/
-		if (word == "MODE")
-			Server::MODE(info, user);
-
-		//Works fine
-		if (word == "INVITE")
-			Server::INVITE(info, user);
-
-		//Works fine
-		if (word == "KICK")
-			Server::KICK(info, user);
-
-		//Works fine
-		if (word == "PART")
-			Server::PART(info, user);
-
-		//Works need to add channel modes
-		/*
-			JOIN #toast,#ircv3 mysecret
-
-			line = JOIN #toast,#ircv3 mysecret
-
-			namesToJoin = #toast,#ircv3
-			keysToJoin = mysecret
-		*/
-		if (word == "JOIN")
-			Server::JOIN(info, user, false);
-
-		//Works fine
-		if (word == "PRIVMSG")
-			Server::PRIVMSG(info, user);
-
-		//Works fine
 		if (word == "LIST"){
 			for (std::vector<Channel*>::iterator it = _channels.begin(); it != _channels.end(); ++it)
 				reply(user, "", "322", "", (*it)->getName() + " :" + (*it)->getTopic());
@@ -187,22 +153,30 @@ int Server::recvMessage(User* user) {
 			reply(user, "", "323", "", ":End of LIST");
 		}
 
+		if (word == "JOIN")
+			Server::JOIN(info, user, false);
+
+		if (word == "MODE")
+			Server::MODE(info, user);
+		if (word == "INVITE")
+			Server::INVITE(info, user);
+		if (word == "KICK")
+			Server::KICK(info, user);
+		if (word == "PART")
+			Server::PART(info, user);
+		if (word == "PRIVMSG")
+			Server::PRIVMSG(info, user);
 		if (word == "WHO")
 			Server::WHO(info, user);
-
-		//Works fine
 		if (word == "NICK")
 			Server::NICK(info, user);
+		if (word == "TOPIC")
+			Server::TOPIC(info, user);
 
-		//Works fine
 		if (word == "USER"){
 			info >> word;
 			user->setUser(word);
 		}
-
-		//Works fine
-		if (word == "TOPIC")
-			Server::TOPIC(info, user);
 
 		//RPL_WELCOME
 		if (!user->getWelcome() && user->getUser().length() > 0 && user->getNick().length() > 0 && user->getAuthed()){
@@ -212,6 +186,7 @@ int Server::recvMessage(User* user) {
 	}
 	print(_users);
 	print(_channels);
+	_message.clear();
 	return 0;
 }
 
