@@ -197,12 +197,12 @@ void Server::JOIN(std::stringstream& info, User* user, bool invited) {
 			//ERR_CHANNELISFULL
 			else if ((*cha)->getNUsers() >= (*cha)->getMaxUsers())
 				reply(user, "", "471", "", (*cha)->getName() + " :Cannot join channel (+l) - is full");
-			//ERR_BADCHANNELKEY
-			else if ((*cha)->getKey() != key)
-				reply(user, "", "475", "", (*cha)->getName() + " :Cannot join channel (+k) - bad key");
 			//ERR_INVITEONLYCHAN
 			else if ((*cha)->isInviteOnly() && !invited)
 				reply(user, "", "473", "", (*cha)->getName() + " :Cannot join channel (+i) - invite only");
+			//ERR_BADCHANNELKEY
+			else if ((*cha)->getKey() != key && !invited)
+				reply(user, "", "475", "", (*cha)->getName() + " :Cannot join channel (+k) - bad key");
 			else {
 				(*cha)->addUser(user);
 
@@ -430,13 +430,13 @@ void Server::MODE(std::stringstream& info, User* user) {
 						if (sign == 0)
 							reply(user, "", "461", "", "MODE :Not enough parameters");
 						else {
-							uint32_t limit;
+							uint32_t limit = 0;
 							arguments >> limit;
-							if (limit <= 1 || limit > UINT32_MAX)
-								reply(user, "", "461", "", "MODE :Not enough parameters");
 							//Remove user limit on channel
-							else if (sign == '-')
+							if (sign == '-')
 								(*foundServer)->setMaxUsers(UINT32_MAX);
+							else if (limit <= 1 || limit > UINT32_MAX)
+								reply(user, "", "461", "", "MODE :Not enough parameters");
 							//Add user limit on channel
 							else if (sign == '+')
 								(*foundServer)->setMaxUsers(limit);
@@ -536,7 +536,7 @@ void Server::INVITE(std::stringstream& info, User* user) {
 			else if (!(*foundChannel)->isUserJoined(user))
 				reply(user, "", "442", "", nick + " :You're not on that channel");
 			//ERR_CHANOPRIVSNEEDED
-			else if ((*foundChannel)->isOperator(user) && (*foundChannel)->isInviteOnly())
+			else if (!(*foundChannel)->isOperator(user) && (*foundChannel)->isInviteOnly())
 				reply(user, "", "482", "", (*foundChannel)->getName() + " :You're not channel operator");
 			//RPL_INVITING
 			else {

@@ -89,6 +89,8 @@ void Server::addUser(User* user) { _users.push_back(user); }
 void Server::removeUser(User* user) {
 	delete user;
 	_users.erase(std::find(_users.begin(), _users.end(), user), _users.end());
+	for (std::vector<Channel*>::iterator it = _channels.begin(); it != _channels.end(); ++it)
+		(*it)->removeUser(user);
 }
 void Server::addChannel(Channel* channel) { _channels.push_back(channel); }
 void Server::removeChannel(Channel* channel) {
@@ -135,6 +137,7 @@ int Server::recvMessage(User* user) {
 		if (word == "QUIT"){
 			std::cout << "Client disconnected" << std::endl;
 			removeUser(user);
+			_message.clear();
 			return 0;
 		}
 
@@ -174,6 +177,12 @@ int Server::recvMessage(User* user) {
 			Server::TOPIC(info, user);
 
 		if (word == "USER"){
+			if (user->getAuthed() == 0) {
+				std::cout << "Client disconnected" << std::endl;
+				removeUser(user);
+				_message.clear();
+				return 0;
+			}
 			info >> word;
 			user->setUser(word);
 		}
