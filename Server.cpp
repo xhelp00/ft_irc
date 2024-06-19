@@ -87,15 +87,15 @@ void Server::setPort(int port) { _port = port; }
 
 void Server::addUser(User* user) { _users.push_back(user); }
 void Server::removeUser(User* user) {
-	delete user;
-	_users.erase(std::find(_users.begin(), _users.end(), user), _users.end());
+	_users.erase(std::find(_users.begin(), _users.end(), user));
 	for (std::vector<Channel*>::iterator it = _channels.begin(); it != _channels.end(); ++it)
 		(*it)->removeUser(user);
+	delete user;
 }
 void Server::addChannel(Channel* channel) { _channels.push_back(channel); }
 void Server::removeChannel(Channel* channel) {
+	_channels.erase(std::find(_channels.begin(), _channels.end(), channel));
 	delete channel;
-	_channels.erase(std::find(_channels.begin(), _channels.end(), channel), _channels.end());
 }
 
 /*	Server::recvMessage(User* user)
@@ -136,7 +136,10 @@ int Server::recvMessage(User* user) {
 
 		if (word == "QUIT"){
 			std::cout << "Client disconnected" << std::endl;
-			removeUser(user);
+			Server::removeUser(user);
+			for (std::vector<Channel*>::iterator it = _channels.begin(); it != _channels.end(); ++it)
+				if ((*it)->getNUsers() <= 0)
+					Server::removeChannel(*it--);
 			_message.clear();
 			return 0;
 		}
@@ -179,7 +182,7 @@ int Server::recvMessage(User* user) {
 		if (word == "USER"){
 			if (user->getAuthed() == 0) {
 				std::cout << "Client disconnected" << std::endl;
-				removeUser(user);
+				Server::removeUser(user);
 				_message.clear();
 				return 0;
 			}

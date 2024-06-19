@@ -80,18 +80,18 @@ void Channel::addUser(User* user) {
 void Channel::removeUser(User* user) {
 	if (isOperator(user))
 		removeOperator(user);
-	_users.erase(std::find(_users.begin(), _users.end(), user), _users.end());
+	_users.erase(std::find(_users.begin(), _users.end(), user));
 	_nUsers--;
 }
 
 void Channel::addOperator(User* user) {
-	_operators.push_back(user);
 	std::cout << CYAN << _name << " " << user->getNick() << " is now a operator" << END << std::endl;
+	_operators.push_back(user);
 }
 
 void Channel::removeOperator(User* user) {
-	_operators.erase(std::find(_operators.begin(), _operators.end(), user), _operators.end());
 	std::cout << CYAN << _name << " " << user->getNick() << " is no longer a operator" << END << std::endl;
+	_operators.erase(std::find(_operators.begin(), _operators.end(), user));
 }
 
 bool Channel::isOperator(User* user) const {

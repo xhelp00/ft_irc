@@ -524,6 +524,10 @@ void Server::INVITE(std::stringstream& info, User* user) {
 					break;
 			//RPL_INVITING
 			if (foundChannel == _channels.end()) {
+				if (channel[0] != '#') {
+					std::cout << BLUE << "Not valid channel name\n" << END;
+					return ;
+				}
 				reply(user, "", "341", "", nick + " " + channel);
 				std::stringstream ss;
 				ss << channel;
